@@ -40,11 +40,11 @@ router.get('/:id/pdf', async (req, res) => {
     // Company information for PDF header
     const companyInfo = {
       name: 'KUSH AIR',
-      tagline: 'Spirit of the South',
-      address: 'Juba International Airport, P.O. Box 123, Juba, South Sudan',
-      contacts: 'finance@kushair.com | +211 920 000 000',
-      iata_code: 'K9',
-      website: 'www.kushair.com'
+      tagline: 'IATA: KU',
+      address: 'Amin Mohamed Building, Opposite KCB, Juba Town',
+      contacts: 'finance@kushair.net | +211929754555',
+      iata_code: 'KU',
+      website: 'www.kushair.net'
     };
 
     // ✅ Load company logo
