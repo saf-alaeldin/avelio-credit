@@ -77,27 +77,14 @@
 }
 
 .logo-icon {
-  width: 72px; /* 8PX GRID */
-  height: 72px; /* 8PX GRID */
-  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
-  border-radius: 12px; /* CONSISTENT RADIUS */
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 20px;
-  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.3);
-  animation: logoFloat 3s ease-in-out infinite; /* MICRO-INTERACTION */
 }
 
-@keyframes logoFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
-}
-
-.logo-icon svg {
-  color: white;
-  width: 36px;
-  height: 36px;
+.logo-icon img {
+  display: block;
 }
 
 .login-title {

@@ -15,9 +15,10 @@
 
 .brand-link { display:flex; align-items:center; gap:12px; text-decoration:none; }
 .brand-logo {
-  width:40px; height:40px; border-radius:12px; display:grid; place-items:center;
-  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
-  box-shadow:0 4px 12px rgba(14,165,233,.3);
+  display:flex; align-items:center; justify-content:center;
+}
+.brand-logo img {
+  display: block;
 }
 .brand-text { display:flex; flex-direction:column; }
 .brand-title { font-weight:800; color:#0f172a; line-height:1; }

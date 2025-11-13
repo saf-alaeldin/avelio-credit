@@ -81,7 +81,6 @@ function Login() {
               style={{ width: '200px', height: 'auto' }}
             />
           </div>
-          <h1 className="login-title">Kush Air</h1>
           <p className="login-subtitle">Credit Management System</p>
         </div>
 

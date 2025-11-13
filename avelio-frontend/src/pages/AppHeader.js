@@ -41,14 +41,10 @@ export default function AppHeader() {
         <Link to="/dashboard" className="brand-link" aria-label="Go to Dashboard">
           <div className="brand-logo">
             <img
-              src="/images/kushair-logo-square.png"
-              alt="KU"
-              style={{ width: '28px', height: '28px', borderRadius: '4px' }}
+              src="/images/kushair-logo.png"
+              alt="Kush Air"
+              style={{ height: '45px', width: 'auto' }}
             />
-          </div>
-          <div className="brand-text">
-            <span className="brand-title">Kush Air</span>
-            <span className="brand-subtitle">Credit Management</span>
           </div>
         </Link>
 
