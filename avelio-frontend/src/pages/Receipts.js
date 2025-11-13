@@ -135,15 +135,21 @@ export default function Receipts() {
         list = [];
       }
 
-      // Apply client-side filters ONLY for overdue (backend doesn't filter this)
+      // Apply client-side filters for overdue and pending (to separate them)
       if (overdueFilter) {
         // OVERDUE: Only PENDING receipts older than 3 days
         list = list.filter(r => {
           const st = String(r.status || '').toUpperCase();
           return st === 'PENDING' && isOverdue(r);
         });
+      } else if (statusFilter === 'PENDING') {
+        // PENDING: Only PENDING receipts NOT overdue
+        list = list.filter(r => {
+          const st = String(r.status || '').toUpperCase();
+          return st === 'PENDING' && !isOverdue(r);
+        });
       }
-      // For all other filters (PAID, PENDING, date), trust backend filtering
+      // For PAID, date filters, and ALL tab, trust backend filtering
 
       // Apply client-side search filtering if needed
       if (searchQuery.trim()) {
@@ -162,8 +168,8 @@ export default function Receipts() {
         list.length;
 
       setReceipts(list);
-      // Use filtered list length ONLY when applying client-side filters (overdue or search)
-      const useFilteredCount = overdueFilter || searchQuery.trim();
+      // Use filtered list length when applying client-side filters (overdue, pending, or search)
+      const useFilteredCount = overdueFilter || statusFilter === 'PENDING' || searchQuery.trim();
       setTotal(useFilteredCount ? list.length : Number(tot || 0));
     } catch (e) {
       setError(e.message || 'Failed to load receipts');
