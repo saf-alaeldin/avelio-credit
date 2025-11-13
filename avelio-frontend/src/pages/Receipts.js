@@ -60,33 +60,39 @@ export default function Receipts() {
 
     console.log('URL Params:', { urlStatus, urlDate, urlFilter });
 
-    // RESET ALL filters first to avoid mixing old and new filters
-    setStatusFilter('');
-    setDateFrom('');
-    setDateTo('');
-    setOverdueFilter(false);
-    setPage(1);
+    // Determine new filter values based on URL params
+    let newStatusFilter = '';
+    let newDateFrom = '';
+    let newDateTo = '';
+    let newOverdueFilter = false;
 
     // Handle "today" date filter
     if (urlDate === 'today') {
       const today = new Date().toISOString().split('T')[0];
       console.log('Setting today filter:', today);
-      setDateFrom(today);
-      setDateTo(today);
+      newDateFrom = today;
+      newDateTo = today;
     }
 
     // Handle status filter (PAID or PENDING)
     if (urlStatus) {
       console.log('Setting status filter:', urlStatus.toUpperCase());
-      setStatusFilter(urlStatus.toUpperCase());
+      newStatusFilter = urlStatus.toUpperCase();
     }
 
     // Handle overdue filter
     if (urlFilter === 'overdue') {
       console.log('Setting overdue filter');
-      setOverdueFilter(true);
-      setStatusFilter('PENDING');
+      newOverdueFilter = true;
+      newStatusFilter = 'PENDING';
     }
+
+    // Batch update all filters at once to prevent multiple renders
+    setStatusFilter(newStatusFilter);
+    setDateFrom(newDateFrom);
+    setDateTo(newDateTo);
+    setOverdueFilter(newOverdueFilter);
+    setPage(1);
   }, [searchParams]);
 
   // Fetch receipts function
