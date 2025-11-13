@@ -131,13 +131,16 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const server = app.listen(PORT, () => {
+const HOST = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
+const server = app.listen(PORT, HOST, () => {
   logger.info('===========================================');
   logger.info('🚀 Avelio Credit-Lite API Server');
   logger.info('===========================================');
-  logger.info(`✅ Server running on: http://localhost:${PORT}`);
+  logger.info(`✅ Server running on: http://${HOST}:${PORT}`);
+  logger.info(`✅ Local access: http://localhost:${PORT}`);
+  logger.info(`✅ Network access: http://192.168.7.114:${PORT}`);
   logger.info(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`✅ Health check: http://localhost:${PORT}/health`);
+  logger.info(`✅ Health check: http://${HOST}:${PORT}/health`);
   logger.info('===========================================');
 
   // Test database connection after server starts
