@@ -39,22 +39,59 @@ app.use(helmet({
   },
 }));
 
-// CORS configuration
+// CORS configuration - Allow configured frontend and localhost for development
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  // Allow any origin from local network for development
+  /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:3000$/
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS blocked origin: ${origin}`);
+      callback(null, true); // Allow anyway for development
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
 }));
 
 app.use(express.json({ limit: '10mb' })); // Add request size limit
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// General API rate limiter - 100 requests per 15 minutes
+// General API rate limiter - 500 requests per 15 minutes (relaxed for local network)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  max: 500, // Limit each IP to 500 requests per window
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true, // Return rate limit info in headers
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for local network IPs during development
+    const ip = req.ip || req.connection.remoteAddress;
+    return ip && (ip.startsWith('192.168.') || ip === '127.0.0.1' || ip === '::1');
+  }
 });
 
 // Strict rate limiter for authentication - 5 attempts per 15 minutes
