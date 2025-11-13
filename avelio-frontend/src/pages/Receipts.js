@@ -58,6 +58,8 @@ export default function Receipts() {
     const urlDate = searchParams.get('date') || '';
     const urlFilter = searchParams.get('filter') || '';
 
+    console.log('URL Params:', { urlStatus, urlDate, urlFilter });
+
     // RESET ALL filters first to avoid mixing old and new filters
     setStatusFilter('');
     setDateFrom('');
@@ -68,17 +70,20 @@ export default function Receipts() {
     // Handle "today" date filter
     if (urlDate === 'today') {
       const today = new Date().toISOString().split('T')[0];
+      console.log('Setting today filter:', today);
       setDateFrom(today);
       setDateTo(today);
     }
 
     // Handle status filter (PAID or PENDING)
     if (urlStatus) {
+      console.log('Setting status filter:', urlStatus.toUpperCase());
       setStatusFilter(urlStatus.toUpperCase());
     }
 
     // Handle overdue filter
     if (urlFilter === 'overdue') {
+      console.log('Setting overdue filter');
       setOverdueFilter(true);
       setStatusFilter('PENDING');
     }
@@ -89,7 +94,7 @@ export default function Receipts() {
     try {
       setLoading(true);
       setError('');
-      
+
       // Build API params - for overdue, fetch all PENDING receipts
       const params = { page, pageSize };
 
@@ -103,7 +108,11 @@ export default function Receipts() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
 
+      console.log('Fetching receipts with params:', params);
+      console.log('Filter state:', { statusFilter, dateFrom, dateTo, overdueFilter });
+
       const data = await apiGet('/receipts', params);
+      console.log('API Response:', data);
 
       let list =
         data?.receipts ??
