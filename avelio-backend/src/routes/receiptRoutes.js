@@ -40,7 +40,7 @@ router.get('/:id/pdf', async (req, res) => {
     // Company information for PDF header
     const companyInfo = {
       name: 'KUSH AIR',
-      tagline: 'IATA: KU',
+      tagline: 'Spirit of the South',
       address: 'Amin Mohamed Building, Opposite KCB, Juba Town',
       contacts: 'finance@kushair.net | +211929754555',
       iata_code: 'KU',
