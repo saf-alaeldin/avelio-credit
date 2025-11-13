@@ -101,6 +101,9 @@ export default function Receipts() {
       setLoading(true);
       setError('');
 
+      console.log('=== FETCH TRIGGERED ===');
+      console.log('Current filter state:', { statusFilter, dateFrom, dateTo, overdueFilter, page });
+
       // Build API params - for overdue, fetch all PENDING receipts
       const params = { page, pageSize };
 
@@ -240,8 +243,13 @@ export default function Receipts() {
     setOverdueFilter(false);
     setPage(1);
     // Update URL params to match the filter state
+    // Preserve date filter from URL if it exists
+    const urlDate = searchParams.get('date');
     if (status) {
       setSearchParams({ status: status });
+    } else if (urlDate) {
+      // Keep date filter when clicking "All" tab
+      setSearchParams({ date: urlDate });
     } else {
       setSearchParams({});
     }
