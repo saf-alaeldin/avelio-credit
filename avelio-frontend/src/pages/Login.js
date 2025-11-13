@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, AlertCircle, Plane } from 'lucide-react';
+import { Lock, User, AlertCircle } from 'lucide-react';
 import { handleLogin } from '../utils/auth';
 import './Login.css';
 
@@ -75,7 +75,11 @@ function Login() {
         {/* Logo Section */}
         <div className="login-logo">
           <div className="logo-icon">
-            <Plane size={36} />
+            <img
+              src="/images/kushair-logo.png"
+              alt="Kush Air Logo"
+              style={{ width: '200px', height: 'auto' }}
+            />
           </div>
           <h1 className="login-title">Kush Air</h1>
           <p className="login-subtitle">Credit Management System</p>

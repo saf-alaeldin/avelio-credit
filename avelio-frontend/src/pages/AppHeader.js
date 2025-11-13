@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import './AppHeader.css';
-import { Plane } from 'lucide-react';
 import { handleLogout } from '../utils/auth';
 import logger from '../utils/logger';
 
@@ -40,7 +39,13 @@ export default function AppHeader() {
       <header className="appheader">
         {/* Brand (clickable to Dashboard) */}
         <Link to="/dashboard" className="brand-link" aria-label="Go to Dashboard">
-          <div className="brand-logo"><Plane size={20} color="white" /></div>
+          <div className="brand-logo">
+            <img
+              src="/images/kushair-logo-square.png"
+              alt="KU"
+              style={{ width: '28px', height: '28px', borderRadius: '4px' }}
+            />
+          </div>
           <div className="brand-text">
             <span className="brand-title">Kush Air</span>
             <span className="brand-subtitle">Credit Management</span>
