@@ -44,70 +44,36 @@ export default function Receipts() {
   // Modal state
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // Read filters from URL or component state
-  const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [overdueFilter, setOverdueFilter] = useState(false);
+
+  // Local filter state (for manual filters like search, date inputs)
+  const [manualDateFrom, setManualDateFrom] = useState('');
+  const [manualDateTo, setManualDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize filters from URL params on mount
-  useEffect(() => {
-    const urlStatus = searchParams.get('status') || '';
-    const urlDate = searchParams.get('date') || '';
-    const urlFilter = searchParams.get('filter') || '';
+  // Read and compute filters from URL params directly (no state sync needed)
+  const urlStatus = searchParams.get('status') || '';
+  const urlDate = searchParams.get('date') || '';
+  const urlFilter = searchParams.get('filter') || '';
 
-    console.log('URL Params:', { urlStatus, urlDate, urlFilter });
+  // Compute effective filter values
+  const statusFilter = urlStatus ? urlStatus.toUpperCase() : '';
+  const overdueFilter = urlFilter === 'overdue';
 
-    // Determine new filter values based on URL params
-    let newStatusFilter = '';
-    let newDateFrom = '';
-    let newDateTo = '';
-    let newOverdueFilter = false;
+  // Date filter: use manual dates if set, otherwise use URL date
+  let dateFrom = manualDateFrom;
+  let dateTo = manualDateTo;
 
-    // Handle "today" date filter
-    if (urlDate === 'today') {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('Setting today filter:', today);
-      newDateFrom = today;
-      newDateTo = today;
-    }
-
-    // Handle status filter (PAID or PENDING)
-    if (urlStatus) {
-      console.log('Setting status filter:', urlStatus.toUpperCase());
-      newStatusFilter = urlStatus.toUpperCase();
-    }
-
-    // Handle overdue filter
-    if (urlFilter === 'overdue') {
-      console.log('Setting overdue filter');
-      newOverdueFilter = true;
-      newStatusFilter = 'PENDING';
-    }
-
-    // Use functional updates to batch state changes
-    setIsInitialized(false); // Prevent fetching during state updates
-    setStatusFilter(newStatusFilter);
-    setDateFrom(newDateFrom);
-    setDateTo(newDateTo);
-    setOverdueFilter(newOverdueFilter);
-    setPage(1);
-
-    // Mark as initialized after a brief delay to ensure all states are updated
-    setTimeout(() => setIsInitialized(true), 0);
-  }, [searchParams]);
+  if (!manualDateFrom && !manualDateTo && urlDate === 'today') {
+    const today = new Date().toISOString().split('T')[0];
+    dateFrom = today;
+    dateTo = today;
+  }
 
   // Fetch receipts function
   const fetchReceipts = async () => {
     try {
       setLoading(true);
       setError('');
-
-      console.log('=== FETCH TRIGGERED ===');
-      console.log('Current filter state:', { statusFilter, dateFrom, dateTo, overdueFilter, page });
 
       // Build API params - for overdue, fetch all PENDING receipts
       const params = { page, pageSize };
@@ -122,11 +88,7 @@ export default function Receipts() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
 
-      console.log('Fetching receipts with params:', params);
-      console.log('Filter state:', { statusFilter, dateFrom, dateTo, overdueFilter });
-
       const data = await apiGet('/receipts', params);
-      console.log('API Response:', data);
 
       let list =
         data?.receipts ??
@@ -184,10 +146,8 @@ export default function Receipts() {
   };
 
   useEffect(() => {
-    if (isInitialized) {
-      fetchReceipts();
-    }
-  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger, isInitialized]);
+    fetchReceipts();
+  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger]);
 
   const pages = Math.max(1, Math.ceil((total || 0) / pageSize));
   
@@ -242,23 +202,18 @@ export default function Receipts() {
   };
 
   const clearFilters = () => {
-    setIsInitialized(true); // Keep initialized state
-    setStatusFilter('');
-    setDateFrom('');
-    setDateTo('');
-    setOverdueFilter(false);
+    setManualDateFrom('');
+    setManualDateTo('');
     setSearchQuery('');
     setPage(1);
     setSearchParams({});
   };
 
   const handleStatusFilterClick = (status) => {
-    setIsInitialized(true); // Keep initialized state
-    setStatusFilter(status);
-    setOverdueFilter(false);
+    setManualDateFrom('');
+    setManualDateTo('');
     setPage(1);
     // Update URL params to match the filter state
-    // Preserve date filter from URL if it exists
     const urlDate = searchParams.get('date');
     if (status) {
       setSearchParams({ status: status });
@@ -318,7 +273,6 @@ export default function Receipts() {
             type="text"
             value={searchQuery}
             onChange={(e) => {
-              setIsInitialized(true); // Keep initialized state
               setSearchQuery(e.target.value);
               setPage(1);
             }}
@@ -339,7 +293,6 @@ export default function Receipts() {
           {searchQuery && (
             <button
               onClick={() => {
-                setIsInitialized(true); // Keep initialized state
                 setSearchQuery('');
                 setPage(1);
               }}
@@ -389,9 +342,8 @@ export default function Receipts() {
           <button
             className={`receipts-filter-tab ${overdueFilter ? 'active' : ''}`}
             onClick={() => {
-              setIsInitialized(true); // Keep initialized state
-              setOverdueFilter(true);
-              setStatusFilter('PENDING');
+              setManualDateFrom('');
+              setManualDateTo('');
               setPage(1);
               // Update URL params to match the overdue filter
               setSearchParams({ filter: 'overdue' });
@@ -408,11 +360,9 @@ export default function Receipts() {
             <input
               type="date"
               className="receipts-date-input"
-              value={dateFrom}
+              value={manualDateFrom}
               onChange={(e) => {
-                setIsInitialized(true); // Keep initialized state
-                setDateFrom(e.target.value);
-                setOverdueFilter(false);
+                setManualDateFrom(e.target.value);
                 // Clear URL params when manually changing date filters
                 setSearchParams({});
               }}
@@ -423,11 +373,9 @@ export default function Receipts() {
             <input
               type="date"
               className="receipts-date-input"
-              value={dateTo}
+              value={manualDateTo}
               onChange={(e) => {
-                setIsInitialized(true); // Keep initialized state
-                setDateTo(e.target.value);
-                setOverdueFilter(false);
+                setManualDateTo(e.target.value);
                 // Clear URL params when manually changing date filters
                 setSearchParams({});
               }}
