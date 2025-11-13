@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { generateReceiptQRBuffer } = require('./qrcode');
+const logger = require('./logger');
 const fs = require('fs');
 const path = require('path');
 
@@ -16,8 +17,14 @@ function formatDate(dateString) {
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-function formatTimeHHMM(dateLike) {
-  const d = dateLike ? new Date(dateLike) : new Date();
+function formatTimeHHMM(timeString) {
+  // If it's already a time string (HH:MM:SS or HH:MM), extract HH:MM
+  if (typeof timeString === 'string' && timeString.includes(':')) {
+    const parts = timeString.split(':');
+    return `${parts[0]}:${parts[1]}`;
+  }
+  // Otherwise try to parse as date
+  const d = timeString ? new Date(timeString) : new Date();
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
@@ -60,10 +67,10 @@ function numberToWords(num) {
 async function generateReceiptPDF(receiptData) {
   return new Promise(async (resolve, reject) => {
     try {
-      // create doc
+      // create doc - compact margins for single page
       const doc = new PDFDocument({
         size: 'A4',
-        margins: { top: 48, bottom: 48, left: 48, right: 48 },
+        margins: { top: 30, bottom: 30, left: 40, right: 40 },
         autoFirstPage: false
       });
 
@@ -91,25 +98,27 @@ async function generateReceiptPDF(receiptData) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // brand palette — refined, modern, neutral
-      const PRIMARY = '#0B5F8A';       // deep teal/blue
-      const ACCENT = '#00A6C7';        // bright accent
-      const TEXT = '#0F1724';          // near-black
+      // brand palette — refined, modern, professional
+      const PRIMARY = '#0EA5E9';       // bright sky blue
+      const PRIMARY_DARK = '#0284C7';  // darker blue
+      const ACCENT = '#10B981';        // emerald green
+      const TEXT = '#1F2937';          // dark gray
       const MUTED = '#6B7280';         // muted gray
-      const SOFT = '#F3FBFF';          // soft background tint
+      const LIGHT_BG = '#F9FAFB';      // light gray background
+      const SOFT = '#EFF6FF';          // soft blue tint
       const CARD = '#FFFFFF';
-      const BORDER = '#E6EEF4';
+      const BORDER = '#E5E7EB';
 
       // Shortcuts + safe fallbacks
       const companyName = receiptData?.company?.name || 'KUSH AIR';
       const companyTag = receiptData?.company?.tagline || 'Spirit of the South';
-      const companyAddr = receiptData?.company?.address || 'Juba International Airport, P.O. Box 123, Juba, South Sudan';
-      const companyContacts = receiptData?.company?.contacts || 'finance@kushair.com | +211 920 000 000';
-      const iataCode = receiptData?.company?.iata_code || 'K9';
+      const companyAddr = receiptData?.company?.address || 'Amin Mohamed Building, Juba Market, Juba, South Sudan';
+      const companyContacts = receiptData?.company?.contacts || 'finance@kushair.net | +211 912 310 004';
+      const iataCode = receiptData?.company?.iata_code || 'KU';
       const station = receiptData?.station || '—';
       const receiptNo = receiptData?.receipt_number || '—';
       const status = (receiptData?.status || '').toUpperCase();
-      const cashier = receiptData?.issued_by || 'Authorized Staff';
+      const cashier = receiptData?.issued_by_name || receiptData?.issued_by || 'Authorized Staff';
       const method = receiptData?.payment_method || 'CASH';
       const currency = (receiptData?.currency || 'USD').toUpperCase();
       const agencyName = receiptData?.agency?.agency_name || '—';
@@ -118,172 +127,372 @@ async function generateReceiptPDF(receiptData) {
 
       // Times
       const issuedAt = receiptData?.issue_date || new Date().toISOString();
+      const issueTime = receiptData?.issue_time || receiptData?.issue_date;
       const paymentAt = receiptData?.payment_date || issuedAt;
       const localDateStr = formatDate(issuedAt);
-      const localTimeStr = formatTimeHHMM(issuedAt);
+      const localTimeStr = formatTimeHHMM(issueTime);
       const utc = new Date(issuedAt);
       const utcTimeStr = `${String(utc.getUTCHours()).padStart(2,'0')}:${String(utc.getUTCMinutes()).padStart(2,'0')} UTC`;
 
       // Add first page
       doc.addPage();
 
-      // subtle page background strip top
-      doc.rect(doc.page.margins.left, doc.page.margins.top - 12, doc.page.width - doc.page.margins.left - doc.page.margins.right, 88)
-         .fillOpacity(1)
-         .fill(SOFT);
+      // Decorative top border only
+      doc.rect(0, 0, doc.page.width, 3)
+         .fill(PRIMARY);
 
-      // Header area (logo left, company center-left, actions right)
-      const headerY = doc.page.margins.top - 4;
-      // Draw logo box with rounded background
+      // Compact header - everything in one row
+      const headerY = doc.page.margins.top + 6;
+      const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+      // Left: Logo (increased size for better visibility)
+      const logoSize = 90;
       if (receiptData?.company_logo) {
         try {
-          // logo container
-          const logoX = doc.page.margins.left + 6;
-          const logoY = headerY + 6;
-          const logoSize = 64;
-          // background rounded rect
-          doc.roundedRect(logoX - 6, logoY - 6, logoSize + 12, logoSize + 12, 10)
-             .fill('#FFFFFF');
-          // draw logo (allow fit)
-          doc.image(receiptData.company_logo, logoX, logoY, { fit: [logoSize, logoSize], align: 'center', valign: 'center' });
+          doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 8)
+             .fillOpacity(1)
+             .fill('#FFFFFF')
+             .strokeColor(PRIMARY)
+             .lineWidth(2)
+             .stroke();
+          doc.image(receiptData.company_logo, doc.page.margins.left + 6, headerY + 6, {
+            fit: [logoSize - 12, logoSize - 12],
+            align: 'center',
+            valign: 'center'
+          });
         } catch (e) {
-          // fallback: circle glyph
-          doc.circle(doc.page.margins.left + 40, headerY + 38, 30).fill(PRIMARY);
-          doc.fillColor('#fff').font('UI-Bold').fontSize(20).text(companyName.charAt(0), doc.page.margins.left + 28, headerY + 20);
+          doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 8).fill(PRIMARY);
+          doc.fillColor('#fff').font('UI-Bold').fontSize(32)
+             .text(companyName.charAt(0), doc.page.margins.left + 22, headerY + 18);
         }
       } else {
-        // glyph fallback
-        doc.circle(doc.page.margins.left + 40, headerY + 38, 30).fill(PRIMARY);
-        doc.fillColor('#fff').font('UI-Bold').fontSize(20).text(companyName.charAt(0), doc.page.margins.left + 28, headerY + 20);
+        doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 8).fill(PRIMARY);
+        doc.fillColor('#fff').font('UI-Bold').fontSize(32)
+           .text(companyName.charAt(0), doc.page.margins.left + 22, headerY + 18);
       }
 
-      // Company name + tagline
-      doc.fillColor(TEXT).font('UI-Bold').fontSize(18).text(companyName, doc.page.margins.left + 92, headerY + 8, { continued: false });
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text(companyTag, doc.page.margins.left + 92, headerY + 30);
+      // Center: Company info (vertically centered with logo)
+      const companyX = doc.page.margins.left + logoSize + 14;
+      const logoCenterY = headerY + logoSize / 2;
+      const textBlockHeight = 45; // Approximate total height of 3 lines
+      const textStartY = logoCenterY - textBlockHeight / 2;
 
-      // Right: receipt title and status badge
-      const rightX = doc.page.width - doc.page.margins.right - 220;
-      doc.font('UI-Bold').fontSize(12).fillColor(PRIMARY).text('RECEIPT', rightX, headerY + 8, { align: 'right', width: 200 });
-      doc.font('UI-Regular').fontSize(10).fillColor(MUTED).text(`No: ${receiptNo}`, rightX, headerY + 28, { align: 'right', width: 200 });
+      doc.fillColor(TEXT).font('UI-Bold').fontSize(18).text(companyName, companyX, textStartY);
+      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text(companyTag, companyX, textStartY + 22);
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED).text(`IATA: ${iataCode}`, companyX, textStartY + 38);
 
-      // Status badge
+      // Right: Receipt info + status badge (adjusted for larger logo)
+      const rightX = doc.page.width - doc.page.margins.right - 140;
+      doc.font('UI-Bold').fontSize(11).fillColor(PRIMARY).text('OFFICIAL RECEIPT', rightX, headerY + 10, { align: 'right', width: 140 });
+      doc.font('UI-Bold').fontSize(10).fillColor(TEXT).text(receiptNo, rightX, headerY + 26, { align: 'right', width: 140 });
+
+      // Status badge (adjusted for larger logo)
       const badgeText = status || 'PENDING';
-      const badgeW = 86, badgeH = 22;
+      const badgeW = 90, badgeH = 24;
       const bx = doc.page.width - doc.page.margins.right - badgeW;
-      const by = headerY + 52;
-      doc.roundedRect(bx, by, badgeW, badgeH, 6).fillOpacity(1).fill(status === 'PAID' ? ACCENT : '#FEEBC8');
-      doc.fillColor(status === 'PAID' ? '#fff' : '#92400E').font('UI-Bold').fontSize(10)
+      const by = headerY + 44;
+      const isPaid = status === 'PAID';
+
+      doc.roundedRect(bx, by, badgeW, badgeH, 6)
+         .fillOpacity(1)
+         .fill(isPaid ? ACCENT : '#F59E0B');
+      doc.fillColor('#FFFFFF')
+         .font('UI-Bold')
+         .fontSize(11)
          .text(badgeText, bx, by + 6, { width: badgeW, align: 'center' });
 
-      // Horizontal meta info row
-      const metaY = headerY + 96;
-      doc.moveTo(doc.page.margins.left, metaY).lineTo(doc.page.width - doc.page.margins.right, metaY).strokeOpacity(0.06).lineWidth(1).stroke();
+      // Divider line (adjusted for larger logo)
+      const metaY = headerY + 80;
+      doc.moveTo(doc.page.margins.left, metaY)
+         .lineTo(doc.page.width - doc.page.margins.right, metaY)
+         .strokeOpacity(0.12)
+         .lineWidth(0.5)
+         .strokeColor(BORDER)
+         .stroke();
 
-      // Two card columns: Agency (left), Transaction (right)
+      // Three-column layout - increased height to use space
       const leftX = doc.page.margins.left;
-      const mid = doc.page.width / 2;
-      const rightColX = mid + 8;
-      const cardW = mid - doc.page.margins.left - 12;
+      const colW = (pageWidth - 20) / 3; // 3 columns with 10px gaps
+      const col1X = leftX;
+      const col2X = leftX + colW + 10;
+      const col3X = leftX + (colW * 2) + 20;
 
-      // Agency Card
       const cardY = metaY + 12;
-      const cardH = 140;
-      doc.roundedRect(leftX, cardY, cardW, cardH, 8).fill(CARD).stroke(BORDER);
-      // agency text
-      doc.fillColor(MUTED).font('UI-Regular').fontSize(9).text('Agency', leftX + 16, cardY + 12);
-      doc.font('UI-Bold').fontSize(12).fillColor(TEXT).text(agencyName, leftX + 16, cardY + 28, { width: cardW - 32 });
+      const cardH = 110; // Increased from 90
 
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text('Agency ID', leftX + 16, cardY + 68);
-      doc.font('UI-Bold').fontSize(11).fillColor(TEXT).text(agencyId, leftX + 16, cardY + 84);
+      // Column 1: Agency Details - larger fonts
+      doc.roundedRect(col1X, cardY, colW, cardH, 8)
+         .fill(CARD)
+         .strokeColor(BORDER)
+         .lineWidth(1)
+         .stroke();
 
-      // Transaction Card
-      doc.roundedRect(rightColX, cardY, cardW, cardH, 8).fill(CARD).stroke(BORDER);
-      doc.fillColor(MUTED).font('UI-Regular').fontSize(9).text('Transaction', rightColX + 16, cardY + 12, { continued: false });
-      doc.font('UI-Bold').fontSize(12).fillColor(TEXT).text(formatCurrency(amount, currency), rightColX + 16, cardY + 28, { width: cardW - 32 });
+      doc.fillColor(PRIMARY).font('UI-Bold').fontSize(9)
+         .text('AGENCY DETAILS', col1X + 12, cardY + 10);
+      doc.moveTo(col1X + 12, cardY + 24)
+         .lineTo(col1X + colW - 12, cardY + 24)
+         .strokeColor(LIGHT_BG)
+         .lineWidth(0.5)
+         .stroke();
 
-      // transaction small rows
-      const tStartY = cardY + 56;
-      const kv = [
-        ['Date', `${localDateStr}`],
-        ['Time', `${localTimeStr} (${utcTimeStr})`],
+      doc.font('UI-Bold').fontSize(13).fillColor(TEXT)
+         .text(agencyName, col1X + 12, cardY + 32, { width: colW - 24 });
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Agency ID', col1X + 12, cardY + 72);
+      doc.font('UI-Bold').fontSize(11).fillColor(TEXT)
+         .text(agencyId, col1X + 12, cardY + 84);
+
+      // Column 2: Transaction Details - larger fonts, more spacing
+      doc.roundedRect(col2X, cardY, colW, cardH, 8)
+         .fill(CARD)
+         .strokeColor(BORDER)
+         .lineWidth(1)
+         .stroke();
+
+      doc.fillColor(PRIMARY).font('UI-Bold').fontSize(9)
+         .text('TRANSACTION', col2X + 12, cardY + 10);
+      doc.moveTo(col2X + 12, cardY + 24)
+         .lineTo(col2X + colW - 12, cardY + 24)
+         .strokeColor(LIGHT_BG)
+         .lineWidth(0.5)
+         .stroke();
+
+      const txDetails = [
+        ['Date', localDateStr],
+        ['Time', localTimeStr],
         ['Method', method],
-        ['Currency', currency],
-        ['Station', station],
-        ['Cashier', cashier]
+        ['Station', station]
       ];
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED);
-      kv.forEach((row, i) => {
-        const ry = tStartY + (i * 16);
-        doc.fillColor(MUTED).font('UI-Regular').fontSize(9).text(`${row[0]}`, rightColX + 16, ry);
-        doc.font('UI-Bold').fontSize(9).fillColor(TEXT).text(row[1], rightColX + 110, ry, { width: cardW - 130, align: 'left' });
+
+      txDetails.forEach((row, i) => {
+        const ry = cardY + 32 + (i * 18);
+        doc.fillColor(MUTED).font('UI-Regular').fontSize(8)
+           .text(row[0] + ':', col2X + 12, ry);
+        doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
+           .text(row[1], col2X + 55, ry, { width: colW - 70 });
       });
 
-      // Amount band full-width card below
-      const amtY = cardY + cardH + 18;
-      const amtH = 84;
-      doc.roundedRect(leftX, amtY, doc.page.width - doc.page.margins.left - doc.page.margins.right, amtH, 10).fill(SOFT).stroke(BORDER);
-      doc.fillColor(MUTED).font('UI-Regular').fontSize(9).text('Amount (in figures)', leftX + 20, amtY + 14);
-      doc.font('UI-Bold').fontSize(28).fillColor(PRIMARY).text(formatCurrency(amount, currency), leftX + 20, amtY + 30);
+      // Column 3: Payment Info - larger fonts
+      doc.roundedRect(col3X, cardY, colW, cardH, 8)
+         .fill(CARD)
+         .strokeColor(BORDER)
+         .lineWidth(1)
+         .stroke();
 
-      // amount in words (right side of band)
+      doc.fillColor(PRIMARY).font('UI-Bold').fontSize(9)
+         .text('PAYMENT', col3X + 12, cardY + 10);
+      doc.moveTo(col3X + 12, cardY + 24)
+         .lineTo(col3X + colW - 12, cardY + 24)
+         .strokeColor(LIGHT_BG)
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Currency', col3X + 12, cardY + 32);
+      doc.font('UI-Bold').fontSize(11).fillColor(TEXT)
+         .text(currency, col3X + 12, cardY + 44);
+
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Issued By', col3X + 12, cardY + 72);
+      doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
+         .text(cashier, col3X + 12, cardY + 84, { width: colW - 24 });
+
+      // Amount band - larger to use more space
+      const amtY = cardY + cardH + 14;
+      const amtH = 80;
+
+      doc.roundedRect(leftX, amtY, pageWidth, amtH, 10)
+         .fill(SOFT)
+         .strokeColor(PRIMARY)
+         .lineWidth(2)
+         .stroke();
+
+      // Amount on left - larger
+      doc.fillColor(PRIMARY).font('UI-Bold').fontSize(11)
+         .text('TOTAL AMOUNT', leftX + 20, amtY + 12);
+      doc.font('UI-Bold').fontSize(34).fillColor(PRIMARY_DARK)
+         .text(formatCurrency(amount, currency), leftX + 20, amtY + 28);
+
+      // Amount in words (right side) - larger
       const words = `${numberToWords(amount)} ${currency === 'USD' ? 'dollars' : currency}`.replace(/\s+/g,' ');
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text('Amount (in words)', doc.page.width - doc.page.margins.right - 260, amtY + 14, { width: 240, align: 'right' });
-      doc.font('UI-Bold').fontSize(10).fillColor(TEXT).text(words.charAt(0).toUpperCase() + words.slice(1), doc.page.width - doc.page.margins.right - 260, amtY + 32, { width: 240, align: 'right' });
+      const capitalizedWords = words.charAt(0).toUpperCase() + words.slice(1);
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('In Words:', leftX + pageWidth/2, amtY + 12);
+      doc.font('UI-Bold').fontSize(10).fillColor(TEXT)
+         .text(capitalizedWords, leftX + pageWidth/2, amtY + 26, {
+           width: pageWidth/2 - 20,
+           align: 'left',
+           lineGap: 2
+         });
 
-      // Verification area (QR + Reference + Paid stamp)
-      const vY = amtY + amtH + 18;
-      // left: QR
+      // Verification area - increased size
+      const vY = amtY + amtH + 14;
+      const qrSize = 110; // Increased from 90
+
+      // Three sections horizontally aligned
+      // Left: QR Code - larger
       try {
         const qrBuffer = await generateReceiptQRBuffer(receiptNo);
-        doc.roundedRect(leftX, vY, 120, 120, 8).fill('#fff').stroke(BORDER);
-        doc.image(qrBuffer, leftX + 12, vY + 12, { fit: [96, 96] });
-        doc.font('UI-Regular').fontSize(8).fillColor(MUTED).text('Scan to verify', leftX, vY + 112, { width: 120, align: 'center' });
+        doc.roundedRect(leftX, vY, qrSize, qrSize + 22, 10)
+           .fill('#fff')
+           .strokeColor(BORDER)
+           .lineWidth(1.5)
+           .stroke();
+        doc.image(qrBuffer, leftX + 12, vY + 12, { fit: [86, 86] });
+        doc.font('UI-Bold').fontSize(8).fillColor(PRIMARY)
+           .text('SCAN TO VERIFY', leftX, vY + qrSize, { width: qrSize, align: 'center' });
       } catch (e) {
-        // ignore QR errors
+        doc.roundedRect(leftX, vY, qrSize, qrSize + 22, 10)
+           .fill(LIGHT_BG)
+           .strokeColor(BORDER)
+           .lineWidth(1.5)
+           .stroke();
       }
 
-      // center: refs
-      const refX = leftX + 144;
-      doc.font('UI-Bold').fontSize(11).fillColor(TEXT).text('Verification & Details', refX, vY + 8);
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text(`Reference: ${receiptNo}`, refX, vY + 30);
-      doc.text(`Issued: ${localDateStr} ${localTimeStr}`, refX, vY + 46);
-      doc.text(`Processed: ${formatDate(paymentAt)} ${formatTimeHHMM(paymentAt)}`, refX, vY + 62);
-      doc.text(`IATA Code: ${iataCode}`, refX, vY + 78);
+      // Middle: Verification details - larger fonts
+      const midX = leftX + qrSize + 14;
+      const midW = pageWidth - qrSize - 150 - 28;
 
-      // right: paid box / status
-      const statusBoxW = 170;
-      const statusX = doc.page.width - doc.page.margins.right - statusBoxW;
-      doc.roundedRect(statusX, vY, statusBoxW, 120, 8).fill('#fff').stroke(BORDER);
-      if (status === 'PAID') {
-        doc.fillColor(ACCENT).font('UI-Bold').fontSize(20).text('PAID', statusX, vY + 18, { width: statusBoxW, align: 'center' });
-        doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text(companyName, statusX, vY + 48, { width: statusBoxW, align: 'center' });
-        doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text(formatDate(paymentAt), statusX, vY + 64, { width: statusBoxW, align: 'center' });
+      doc.roundedRect(midX, vY, midW, qrSize + 22, 10)
+         .fill(CARD)
+         .strokeColor(BORDER)
+         .lineWidth(1.5)
+         .stroke();
+
+      doc.font('UI-Bold').fontSize(10).fillColor(PRIMARY)
+         .text('VERIFICATION', midX + 16, vY + 12);
+      doc.moveTo(midX + 16, vY + 28)
+         .lineTo(midX + midW - 16, vY + 28)
+         .strokeColor(LIGHT_BG)
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Receipt #:', midX + 16, vY + 36);
+      doc.font('UI-Bold').fontSize(10).fillColor(TEXT)
+         .text(receiptNo, midX + 16, vY + 48, { width: midW - 32 });
+
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Issued:', midX + 16, vY + 70);
+      doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
+         .text(`${localDateStr}, ${localTimeStr}`, midX + 16, vY + 82);
+
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text('Payment:', midX + 16, vY + 102);
+      doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
+         .text(formatDate(paymentAt), midX + 16, vY + 114);
+
+      // Right: Status stamp with company stamp graphic
+      const statusW = 140;
+      const statusX = doc.page.width - doc.page.margins.right - statusW;
+
+      doc.roundedRect(statusX, vY, statusW, qrSize + 22, 10)
+         .fill(CARD)
+         .strokeColor(isPaid ? ACCENT : '#F59E0B')
+         .lineWidth(2.5)
+         .stroke();
+
+      if (isPaid) {
+        // Draw circular stamp effect - smaller circle that doesn't conflict
+        const stampCenterX = statusX + statusW/2;
+        const stampCenterY = vY + 45;
+
+        doc.circle(stampCenterX, stampCenterY, 42)
+           .fillOpacity(0.2)
+           .fill(ACCENT);
+
+        // PAID text - perfectly centered in circle
+        // Center the text at stampCenterY - half of font height (approximately 10px for size 28)
+        doc.fillOpacity(1)
+           .font('UI-Bold')
+           .fontSize(28)
+           .fillColor(ACCENT)
+           .text('PAID', statusX, stampCenterY - 10, { width: statusW, align: 'center' });
+
+        // Payment details below stamp - DARK readable colors
+        doc.font('UI-Bold').fontSize(11).fillColor('#000000')
+           .text('Payment Confirmed', statusX, vY + 92, { width: statusW, align: 'center' });
+        doc.font('UI-Bold').fontSize(11).fillColor('#000000')
+           .text(companyName, statusX, vY + 106, { width: statusW, align: 'center' });
+        doc.font('UI-Regular').fontSize(10).fillColor('#000000')
+           .text(formatDate(paymentAt), statusX, vY + 120, { width: statusW, align: 'center' });
       } else {
-        doc.fillColor('#374151').font('UI-Bold').fontSize(14).text(status || 'PENDING', statusX, vY + 28, { width: statusBoxW, align: 'center' });
-        doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text('Awaiting settlement', statusX, vY + 56, { width: statusBoxW, align: 'center' });
+        doc.font('UI-Bold').fontSize(18).fillColor('#F59E0B')
+           .text(status || 'PENDING', statusX, vY + 36, { width: statusW, align: 'center' });
+        doc.font('UI-Regular').fontSize(9).fillColor('#000000')
+           .text('Awaiting Settlement', statusX, vY + 66, { width: statusW, align: 'center' });
       }
 
-      // Signature line & small notes
-      const sY = vY + 140;
-      doc.moveTo(leftX + 6, sY).lineTo(leftX + 220, sY).strokeOpacity(0.12).stroke();
-      doc.font('UI-Regular').fontSize(9).fillColor(MUTED).text('Authorized signature', leftX + 6, sY + 8);
-      doc.font('UI-Bold').fontSize(10).fillColor(TEXT).text(cashier, leftX + 6, sY + 24);
+      // Signature area with generated signature
+      const sY = vY + qrSize + 30;
 
-      // footer: compliance & contact (muted)
-      const fY = sY + 58;
-      doc.moveTo(doc.page.margins.left, fY).lineTo(doc.page.width - doc.page.margins.right, fY).strokeOpacity(0.06).lineWidth(1).stroke();
-      const footerText = [
-        'This receipt is electronically generated and verifiable via the QR code.',
-        'Aligns with IATA financial handling practices. Records are immutable once issued.',
-        `Contact: ${companyContacts} • ${companyAddr}`
-      ].join('  •  ');
-      doc.font('UI-Regular').fontSize(8).fillColor(MUTED).text(footerText, doc.page.margins.left, fY + 10, { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: 'center' });
+      // Signature box
+      const sigW = 240;
+      const sigH = 70;
+      doc.roundedRect(leftX, sY, sigW, sigH, 8)
+         .fill(LIGHT_BG)
+         .strokeColor(BORDER)
+         .lineWidth(1)
+         .stroke();
+
+      doc.font('UI-Regular').fontSize(7).fillColor(TEXT)
+         .text('Authorized Signature', leftX + 12, sY + 8);
+
+      // Generate stylized signature text (script-like appearance)
+      doc.save();
+      doc.translate(leftX + 12, sY + 24);
+      doc.scale(1.2, 1); // Slight horizontal stretch for signature effect
+      doc.fillOpacity(1)
+         .font('UI-Italic')
+         .fontSize(16)
+         .fillColor('#000000')
+         .text(cashier, 0, 0, { width: sigW - 24 });
+      doc.restore();
+
+      // Add underline below signature
+      doc.moveTo(leftX + 12, sY + 52)
+         .lineTo(leftX + sigW - 12, sY + 52)
+         .strokeColor('#000000')
+         .strokeOpacity(0.5)
+         .lineWidth(0.8)
+         .stroke();
+
+      // Footer with important notices - right side
+      const footerX = leftX + sigW + 20;
+      const footerW = pageWidth - sigW - 20;
+
+      doc.roundedRect(footerX, sY, footerW, sigH, 8)
+         .fill(CARD)
+         .strokeColor(BORDER)
+         .lineWidth(1)
+         .stroke();
+
+      doc.font('UI-Bold').fontSize(10).fillColor('#000000')
+         .text('IMPORTANT NOTICE', footerX + 12, sY + 10);
+
+      doc.font('UI-Regular').fontSize(8).fillColor('#000000')
+         .text('This receipt is electronically generated and cryptographically secure. All transactions are verifiable via QR code and comply with IATA BSP financial standards.',
+               footerX + 12, sY + 24, { width: footerW - 24, align: 'left', lineGap: 2 });
+
+      // Bottom contact info - improved readability
+      const bottomY = sY + sigH + 12;
+      doc.moveTo(leftX, bottomY)
+         .lineTo(doc.page.width - doc.page.margins.right, bottomY)
+         .strokeColor(BORDER)
+         .strokeOpacity(0.2)
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.font('UI-Bold').fontSize(9).fillColor('#000000')
+         .text(companyContacts, leftX, bottomY + 10, { width: pageWidth, align: 'center' });
+      doc.font('UI-Regular').fontSize(8).fillColor('#000000')
+         .text(companyAddr, leftX, bottomY + 22, { width: pageWidth, align: 'center' });
 
       // end
       doc.end();
 
     } catch (err) {
-      console.error('PDF generation error:', err);
+      logger.error('PDF generation error:', { error: err.message, stack: err.stack });
       reject(err);
     }
   });

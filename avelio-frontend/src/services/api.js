@@ -1,15 +1,69 @@
 import axios from 'axios';
+import logger from '../utils/logger';
+import cache, { CACHE_KEYS, CACHE_TTL } from '../utils/cache';
+
+// ========================================
+// SMART API URL DETECTION
+// ========================================
+const getApiBaseUrl = () => {
+  // 1. First priority: Environment variable (set in deployment platform)
+  if (process.env.REACT_APP_API_URL) {
+    // Validate HTTPS in production
+    if (process.env.NODE_ENV === 'production' && !process.env.REACT_APP_API_URL.startsWith('https://')) {
+      throw new Error('SECURITY ERROR: API URL must use HTTPS in production');
+    }
+    return process.env.REACT_APP_API_URL;
+  }
+
+  // 2. Check if in production
+  if (process.env.NODE_ENV === 'production') {
+    const hostname = window.location.hostname;
+
+    // Detect deployment platform and construct API URL
+    if (hostname.includes('vercel.app')) {
+      const apiUrl = hostname.replace('avelio', 'avelio-api');
+      return `https://${apiUrl}/api/v1`;
+    }
+
+    if (hostname.includes('netlify.app')) {
+      const apiUrl = hostname.replace('avelio', 'avelio-api');
+      return `https://${apiUrl}/api/v1`;
+    }
+
+    if (hostname.includes('render.com')) {
+      return 'https://avelio-credit.onrender.com/api/v1';
+    }
+
+    // FAIL SAFELY: Don't use placeholder URL in production
+    throw new Error(
+      'CRITICAL: REACT_APP_API_URL environment variable must be set in production. ' +
+      'Please configure it in your deployment platform settings.'
+    );
+  }
+
+  // 3. Development fallback
+  return 'http://localhost:5001/api/v1';
+};
 
 // ========================================
 // AXIOS INSTANCE WITH BASE CONFIGURATION
 // ========================================
+const API_BASE_URL = getApiBaseUrl();
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 30000 // 30 second timeout
+  timeout: 30000, // 30 second timeout
+  withCredentials: false // Set to true if using cookies
 });
+
+// Log configuration on startup
+logger.info('🌐 API Configuration:');
+logger.info('  - Base URL:', api.defaults.baseURL);
+logger.info('  - Environment:', process.env.NODE_ENV);
+logger.info('  - Timeout:', api.defaults.timeout + 'ms');
 
 // ========================================
 // REQUEST INTERCEPTOR - Add token to every request
@@ -22,15 +76,15 @@ api.interceptors.request.use(
     // Add token to headers if it exists
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('🔐 Token attached to request');
+      logger.debug('🔐 Token attached to request');
     } else {
-      console.warn('⚠️ No token found in localStorage');
+      logger.debug('⚠️ No token found in localStorage');
     }
     
     return config;
   },
   (error) => {
-    console.error('❌ Request interceptor error:', error);
+    logger.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -51,36 +105,36 @@ api.interceptors.response.use(
       switch (status) {
         case 401:
           // Unauthorized - token invalid or expired
-          console.error('🚫 Authentication failed - redirecting to login');
+          logger.error('🚫 Authentication failed - redirecting to login');
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           window.location.href = '/login';
           break;
-          
+
         case 403:
           // Forbidden - user doesn't have permission
-          console.error('🚫 Access forbidden');
+          logger.error('🚫 Access forbidden');
           break;
           
         case 404:
           // Not found
-          console.error('🔍 Resource not found');
+          logger.error('🔍 Resource not found');
           break;
           
         case 500:
           // Server error
-          console.error('💥 Server error:', data?.message);
+          logger.error('💥 Server error:', data?.message);
           break;
           
         default:
-          console.error(`❌ Error ${status}:`, data?.message);
+          logger.error(`❌ Error ${status}:`, data?.message);
       }
     } else if (error.request) {
       // Request was made but no response received
-      console.error('📡 No response from server - check your connection');
+      logger.error('📡 No response from server - check your connection');
     } else {
       // Something else happened
-      console.error('❌ Request error:', error.message);
+      logger.error('❌ Request error:', error.message);
     }
     
     return Promise.reject(error);
@@ -92,38 +146,55 @@ api.interceptors.response.use(
 // ========================================
 export const receiptsAPI = {
   // Create new receipt
-  create: (data) => {
-    console.log('📝 Creating receipt:', data);
-    return api.post('/receipts', data);
+  create: async (data) => {
+    logger.debug('📝 Creating receipt:', data);
+    const response = await api.post('/receipts', data);
+    // Invalidate stats cache after creating receipt
+    cache.delete(CACHE_KEYS.DASHBOARD_STATS);
+    cache.delete(CACHE_KEYS.TODAY_STATS);
+    cache.invalidatePattern(/^receipts_/);
+    return response;
   },
   
   // Get all receipts with filters
   getAll: (params) => {
-    console.log('📋 Fetching receipts with params:', params);
+    logger.debug('📋 Fetching receipts with params:', params);
     return api.get('/receipts', { params });
   },
   
   // Get single receipt by ID
   getById: (id) => {
-    console.log('🔍 Fetching receipt:', id);
+    logger.debug('🔍 Fetching receipt:', id);
     return api.get(`/receipts/${id}`);
   },
   
   // Update receipt status
-  updateStatus: (id, data) => {
-    console.log('✏️ Updating receipt status:', id, data);
-    return api.put(`/receipts/${id}/status`, data);
+  updateStatus: async (id, data) => {
+    logger.debug('✏️ Updating receipt status:', id, data);
+    const response = await api.put(`/receipts/${id}/status`, data);
+    // Invalidate cache after updating
+    cache.delete(CACHE_KEYS.DASHBOARD_STATS);
+    cache.delete(CACHE_KEYS.TODAY_STATS);
+    cache.invalidatePattern(/^receipts_/);
+    cache.delete(CACHE_KEYS.RECEIPT(id));
+    return response;
   },
-  
+
   // Void receipt
-  void: (id, reason) => {
-    console.log('🗑️ Voiding receipt:', id, reason);
-    return api.post(`/receipts/${id}/void`, { reason });
+  void: async (id, reason) => {
+    logger.debug('🗑️ Voiding receipt:', id, reason);
+    const response = await api.post(`/receipts/${id}/void`, { reason });
+    // Invalidate cache after voiding
+    cache.delete(CACHE_KEYS.DASHBOARD_STATS);
+    cache.delete(CACHE_KEYS.TODAY_STATS);
+    cache.invalidatePattern(/^receipts_/);
+    cache.delete(CACHE_KEYS.RECEIPT(id));
+    return response;
   },
   
   // Generate PDF
   generatePDF: (id) => {
-    console.log('📄 Generating PDF for receipt:', id);
+    logger.debug('📄 Generating PDF for receipt:', id);
     return api.get(`/receipts/${id}/pdf`, { 
       responseType: 'blob' 
     });
@@ -131,7 +202,7 @@ export const receiptsAPI = {
   
   // Download PDF (alias for generatePDF)
   downloadPDF: (id) => {
-    console.log('📥 Downloading PDF for receipt:', id);
+    logger.debug('📥 Downloading PDF for receipt:', id);
     return api.get(`/receipts/${id}/pdf`, { 
       responseType: 'blob' 
     });
@@ -142,28 +213,89 @@ export const receiptsAPI = {
 // AGENCIES API ENDPOINTS
 // ========================================
 export const agenciesAPI = {
-  // Get all agencies
-  getAll: (params) => {
-    console.log('🏢 Fetching agencies');
+  // Get all agencies (with caching)
+  getAll: async (params, useCache = true) => {
+    logger.debug('🏢 Fetching agencies');
+
+    if (useCache) {
+      return cache.getOrFetch(
+        CACHE_KEYS.AGENCIES,
+        () => api.get('/agencies', { params }),
+        CACHE_TTL.AGENCIES
+      );
+    }
+
     return api.get('/agencies', { params });
   },
-  
+
   // Get single agency
   getById: (id) => {
-    console.log('🏢 Fetching agency:', id);
+    logger.debug('🏢 Fetching agency:', id);
     return api.get(`/agencies/${id}`);
   },
-  
+
   // Create agency
   create: (data) => {
-    console.log('🏢 Creating agency:', data);
+    logger.debug('🏢 Creating agency:', data);
+    // Invalidate cache when creating new agency
+    cache.delete(CACHE_KEYS.AGENCIES);
     return api.post('/agencies', data);
   },
-  
+
   // Update agency
   update: (id, data) => {
-    console.log('🏢 Updating agency:', id);
+    logger.debug('🏢 Updating agency:', id);
+    // Invalidate cache when updating agency
+    cache.delete(CACHE_KEYS.AGENCIES);
     return api.put(`/agencies/${id}`, data);
+  }
+};
+
+// ========================================
+// STATS API ENDPOINTS
+// ========================================
+export const statsAPI = {
+  // Get dashboard summary (with caching)
+  getDashboard: async (useCache = true) => {
+    logger.debug('📊 Fetching dashboard stats');
+
+    if (useCache) {
+      return cache.getOrFetch(
+        CACHE_KEYS.DASHBOARD_STATS,
+        () => api.get('/stats/dashboard'),
+        CACHE_TTL.DASHBOARD_STATS
+      );
+    }
+
+    return api.get('/stats/dashboard');
+  },
+
+  // Get today's stats (with caching)
+  getToday: async (useCache = true) => {
+    logger.debug('📊 Fetching today stats');
+
+    if (useCache) {
+      return cache.getOrFetch(
+        CACHE_KEYS.TODAY_STATS,
+        () => api.get('/stats/today'),
+        CACHE_TTL.TODAY_STATS
+      );
+    }
+
+    return api.get('/stats/today');
+  },
+
+  // Get pending summary
+  getPending: () => {
+    logger.debug('📊 Fetching pending stats');
+    return api.get('/stats/pending');
+  },
+
+  // Clear stats cache (call after creating/updating receipts)
+  clearCache: () => {
+    cache.delete(CACHE_KEYS.DASHBOARD_STATS);
+    cache.delete(CACHE_KEYS.TODAY_STATS);
+    logger.debug('📊 Stats cache cleared');
   }
 };
 
@@ -173,13 +305,13 @@ export const agenciesAPI = {
 export const authAPI = {
   // Login
   login: (credentials) => {
-    console.log('🔐 Logging in...');
+    logger.debug('🔐 Logging in...');
     return api.post('/auth/login', credentials);
   },
   
   // Logout
   logout: () => {
-    console.log('👋 Logging out...');
+    logger.debug('👋 Logging out...');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login';
@@ -187,19 +319,19 @@ export const authAPI = {
   
   // Get current user
   getCurrentUser: () => {
-    console.log('👤 Fetching current user');
+    logger.debug('👤 Fetching current user');
     return api.get('/auth/me');
   },
   
   // Update password
   updatePassword: (data) => {
-    console.log('🔑 Updating password');
+    logger.debug('🔑 Updating password');
     return api.put('/auth/password', data);
   },
   
   // Change password (alias for updatePassword)
   changePassword: (data) => {
-    console.log('🔑 Changing password');
+    logger.debug('🔑 Changing password');
     return api.post('/auth/change-password', data);
   }
 };

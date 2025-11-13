@@ -148,9 +148,15 @@
   color: #92400e;
 }
 
-.receipts-status--void {
+.receipts-status--overdue {
   background: #fef2f2;
-  color: #b91c1c;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.receipts-status--void {
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 /* ====== States ====== */
@@ -189,6 +195,17 @@
 .receipts-pagebtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ====== Search Bar ====== */
+.receipts-search-section {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px 12px 0 0;
+  margin-bottom: -1px;
 }
 
 /* ====== Filters Bar ====== */

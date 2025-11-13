@@ -1,6 +1,7 @@
 // src/pages/Receipts.js
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import ReceiptDetailsModal from '../pages/ReceiptDetailsModal';
 import './Receipts.css';
 
@@ -49,25 +50,33 @@ export default function Receipts() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [overdueFilter, setOverdueFilter] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Initialize filters from URL params on mount
   useEffect(() => {
     const urlStatus = searchParams.get('status') || '';
     const urlDate = searchParams.get('date') || '';
     const urlFilter = searchParams.get('filter') || '';
-    
+
+    // RESET ALL filters first to avoid mixing old and new filters
+    setStatusFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setOverdueFilter(false);
+    setPage(1);
+
     // Handle "today" date filter
     if (urlDate === 'today') {
       const today = new Date().toISOString().split('T')[0];
       setDateFrom(today);
       setDateTo(today);
     }
-    
-    // Handle status filter
+
+    // Handle status filter (PAID or PENDING)
     if (urlStatus) {
       setStatusFilter(urlStatus.toUpperCase());
     }
-    
+
     // Handle overdue filter
     if (urlFilter === 'overdue') {
       setOverdueFilter(true);
@@ -81,11 +90,19 @@ export default function Receipts() {
       setLoading(true);
       setError('');
       
+      // Build API params - for overdue, fetch all PENDING receipts
       const params = { page, pageSize };
-      if (statusFilter) params.status = statusFilter;
+
+      // For overdue filter, we need to fetch PENDING and filter client-side
+      if (overdueFilter) {
+        params.status = 'PENDING';
+      } else if (statusFilter) {
+        params.status = statusFilter;
+      }
+
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
-      
+
       const data = await apiGet('/receipts', params);
 
       let list =
@@ -96,9 +113,40 @@ export default function Receipts() {
         data?.list ??
         [];
 
-      // Apply client-side overdue filtering if needed
+      if (!Array.isArray(list)) {
+        list = [];
+      }
+
+      // Apply client-side filters based on active tab
       if (overdueFilter) {
-        list = list.filter(isOverdue);
+        // OVERDUE: Only PENDING receipts older than 3 days
+        list = list.filter(r => {
+          const st = String(r.status || '').toUpperCase();
+          return st === 'PENDING' && isOverdue(r);
+        });
+      } else if (statusFilter === 'PENDING') {
+        // PENDING: Only PENDING receipts NOT overdue
+        list = list.filter(r => {
+          const st = String(r.status || '').toUpperCase();
+          return st === 'PENDING' && !isOverdue(r);
+        });
+      } else if (statusFilter === 'PAID') {
+        // PAID: Only PAID receipts
+        list = list.filter(r => {
+          const st = String(r.status || '').toUpperCase();
+          return st === 'PAID';
+        });
+      }
+      // For 'ALL' or date filters, show everything from backend
+
+      // Apply client-side search filtering if needed
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        list = list.filter(receipt =>
+          receipt.receipt_number?.toLowerCase().includes(query) ||
+          receipt.agency_name?.toLowerCase().includes(query) ||
+          receipt.agency_id?.toLowerCase().includes(query)
+        );
       }
 
       const tot =
@@ -107,8 +155,10 @@ export default function Receipts() {
         (typeof data?.pagination?.total === 'number' && data.pagination.total) ??
         list.length;
 
-      setReceipts(Array.isArray(list) ? list : []);
-      setTotal(overdueFilter ? list.length : Number(tot || 0));
+      setReceipts(list);
+      // Use filtered list length when applying client-side filters
+      const useFilteredCount = overdueFilter || searchQuery.trim() || statusFilter === 'PENDING' || statusFilter === 'PAID';
+      setTotal(useFilteredCount ? list.length : Number(tot || 0));
     } catch (e) {
       setError(e.message || 'Failed to load receipts');
     } finally {
@@ -118,17 +168,23 @@ export default function Receipts() {
 
   useEffect(() => {
     fetchReceipts();
-  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, refreshTrigger]);
+  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger]);
 
   const pages = Math.max(1, Math.ceil((total || 0) / pageSize));
   
-  const statusPill = (s) => {
-    const v = String(s || '').toUpperCase();
+  const statusPill = (receipt) => {
+    const s = String(receipt.status || '').toUpperCase();
+
+    // Check if receipt is overdue
+    if (isOverdue(receipt)) {
+      return <span className="receipts-status receipts-status--overdue">OVERDUE</span>;
+    }
+
     const cls =
-      v === 'PAID' ? 'receipts-status receipts-status--paid' :
-      v === 'PENDING' ? 'receipts-status receipts-status--pending' :
+      s === 'PAID' ? 'receipts-status receipts-status--paid' :
+      s === 'PENDING' ? 'receipts-status receipts-status--pending' :
       'receipts-status receipts-status--void';
-    return <span className={cls}>{v || '-'}</span>;
+    return <span className={cls}>{s || '-'}</span>;
   };
 
   const displayTZ = 'Africa/Juba';
@@ -171,6 +227,7 @@ export default function Receipts() {
     setDateFrom('');
     setDateTo('');
     setOverdueFilter(false);
+    setSearchQuery('');
     setPage(1);
     setSearchParams({});
   };
@@ -205,6 +262,71 @@ export default function Receipts() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link className="receipts-btn" to="/new-receipt">+ New Receipt</Link>
+        </div>
+      </div>
+
+      {/* Search Section */}
+      <div className="receipts-search-section">
+        <div style={{
+          position: 'relative',
+          flex: 1,
+          maxWidth: '400px'
+        }}>
+          <Search
+            size={18}
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: '#64748B'
+            }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by receipt number or agency..."
+            style={{
+              width: '100%',
+              padding: '10px 12px 10px 40px',
+              border: '1.5px solid #E2E8F0',
+              borderRadius: '10px',
+              fontSize: '14px',
+              fontFamily: 'inherit',
+              transition: 'all 0.2s',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#0EA5E9'}
+            onBlur={(e) => e.target.style.borderColor = '#E2E8F0'}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setPage(1);
+              }}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#64748B',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontSize: '18px',
+                lineHeight: '1'
+              }}
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
 
@@ -268,7 +390,7 @@ export default function Receipts() {
               }}
             />
           </div>
-          {(dateFrom || dateTo || statusFilter || overdueFilter) && (
+          {(dateFrom || dateTo || statusFilter || overdueFilter || searchQuery) && (
             <button className="receipts-clear-btn" onClick={clearFilters}>
               Clear Filters
             </button>
@@ -308,7 +430,7 @@ export default function Receipts() {
                       <td className="receipts-td">{receipt.agency?.agency_name || receipt.agency_name || 'N/A'}</td>
                       <td className="receipts-td">{Number(receipt.amount || 0).toFixed(2)}</td>
                       <td className="receipts-td">{receipt.currency || '-'}</td>
-                      <td className="receipts-td">{statusPill(receipt.status)}</td>
+                      <td className="receipts-td">{statusPill(receipt)}</td>
                       <td className="receipts-td">{formatDT(receipt.issue_date, receipt.issue_time)}</td>
                       <td className="receipts-td">
                         <button

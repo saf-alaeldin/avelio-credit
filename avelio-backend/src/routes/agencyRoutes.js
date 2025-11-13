@@ -1,6 +1,7 @@
 // src/routes/agencyRoutes.js
 const express = require('express');
 const router = express.Router();
+const { authenticateToken } = require('../middleware/authMiddleware');
 
 const {
   getAllAgencies,
@@ -8,8 +9,9 @@ const {
   createAgenciesBulk,
 } = require('../controllers/agencyController');
 
-router.get('/', getAllAgencies);
-router.post('/', createAgency);
-router.post('/bulk', createAgenciesBulk);
+// All agency routes require authentication
+router.get('/', authenticateToken, getAllAgencies);
+router.post('/', authenticateToken, createAgency);
+router.post('/bulk', authenticateToken, createAgenciesBulk);
 
 module.exports = router;

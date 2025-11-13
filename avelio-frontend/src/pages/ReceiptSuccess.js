@@ -1,16 +1,15 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  CheckCircle, 
-  Building2, 
-  DollarSign, 
-  Calendar, 
-  MapPin, 
+import {
+  CheckCircle,
+  Building2,
+  DollarSign,
+  Calendar,
+  MapPin,
   User,
   FileText,
   Printer,
   Download,
-  Home,
   CheckCircle2,
   AlertCircle,
   MessageCircle,
@@ -81,14 +80,6 @@ function ReceiptSuccess() {
 
   return (
     <div className="receipt-success-container">
-      {/* Top Navigation */}
-      <div className="success-top-nav">
-        <button className="back-to-dash" onClick={() => navigate('/dashboard')}>
-          <Home size={16} />
-          Dashboard
-        </button>
-      </div>
-
       <div className="success-content">
         {/* Success Icon with Confetti Animation */}
         <div className="success-icon-large">

@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { pool } = require('../config/db');
+const AuditLogger = require('../utils/audit');
+const logger = require('../utils/logger');
 
 exports.login = async (req, res) => {
   try {
@@ -11,25 +13,44 @@ exports.login = async (req, res) => {
     const client = await pool.connect();
     try {
       const userRes = await client.query('SELECT * FROM users WHERE email=$1', [email]);
-      if (userRes.rowCount === 0)
+      if (userRes.rowCount === 0) {
+        // Log failed login - user not found
+        await AuditLogger.logFailedLogin(email, req.ip, 'User not found').catch(() => {});
         return res.status(400).json({ message: 'Invalid credentials' });
+      }
 
       const user = userRes.rows[0];
-      
+
       // Check if user is active
       if (!user.is_active) {
+        await AuditLogger.logFailedLogin(email, req.ip, 'Account inactive').catch(() => {});
         return res.status(403).json({ message: 'Account is inactive' });
       }
-      
+
       const valid = await bcrypt.compare(password, user.password_hash);
-      if (!valid)
+      if (!valid) {
+        // Log failed login - wrong password
+        await AuditLogger.logFailedLogin(email, req.ip, 'Invalid password').catch(() => {});
         return res.status(400).json({ message: 'Invalid credentials' });
+      }
+
+      // Require JWT_SECRET to be set - no insecure fallback
+      if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET environment variable is not configured');
+      }
 
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'your-secret-key-change-this',
-        { expiresIn: '12h' }
+        { id: user.id, email: user.email, role: user.role, name: user.name },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
       );
+
+      // Audit log successful login
+      try {
+        await AuditLogger.logLogin(user.id, req.ip, req.get('user-agent'));
+      } catch (auditError) {
+        logger.error('Audit logging failed:', { error: auditError.message });
+      }
 
       res.json({
         status: 'success',
@@ -51,7 +72,11 @@ exports.login = async (req, res) => {
     }
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ message: 'Login failed.', error: err.message });
+    // Don't expose detailed error messages in production
+    const message = process.env.NODE_ENV === 'production'
+      ? 'Login failed. Please try again.'
+      : err.message;
+    res.status(500).json({ message });
   }
 };
 
@@ -93,18 +118,26 @@ exports.changePassword = async (req, res) => {
         [hashedPassword, userId]
       );
 
-      res.json({ 
+      // Audit log password change
+      try {
+        await AuditLogger.logPasswordChange(userId, req.ip);
+      } catch (auditError) {
+        logger.error('Audit logging failed:', { error: auditError.message });
+      }
+
+      res.json({
         status: 'success',
-        message: 'Password changed successfully' 
+        message: 'Password changed successfully'
       });
     } finally {
       client.release();
     }
   } catch (err) {
     console.error('Change password error:', err);
-    res.status(500).json({ 
-      message: 'Failed to change password',
-      error: err.message 
-    });
+    // Don't expose detailed error messages in production
+    const message = process.env.NODE_ENV === 'production'
+      ? 'Failed to change password. Please try again.'
+      : err.message;
+    res.status(500).json({ message });
   }
 };

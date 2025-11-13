@@ -38,7 +38,7 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch recent receipts for display (last 8)
+  // Fetch recent receipts for display (last 20)
   const fetchReceipts = async () => {
     try {
       const res = await fetch(`${API_BASE}/receipts?pageSize=20`, {
@@ -60,6 +60,28 @@ export default function Dashboard() {
     }
   };
 
+  // Fetch ALL pending receipts to calculate accurate overdue count
+  const fetchPendingReceipts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/receipts?status=PENDING&pageSize=1000`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to fetch pending receipts');
+      const data = await res.json();
+      const list =
+        data?.receipts ??
+        data?.data?.receipts ??
+        data?.data?.rows ??
+        data?.rows ??
+        data?.list ??
+        [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.error('Pending receipts fetch error:', err);
+      return [];
+    }
+  };
+
   // Calculate overdue count from receipts (PENDING + >3 days from issue_date)
   const calculateOverdue = (receiptsList) => {
     return receiptsList.filter(r => {
@@ -70,20 +92,24 @@ export default function Dashboard() {
     }).length;
   };
 
+  const [pendingReceipts, setPendingReceipts] = useState([]);
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         setError('');
-        
-        // Fetch both stats and receipts in parallel
-        const [statsData, receiptsList] = await Promise.all([
+
+        // Fetch stats, receipts for display, and pending receipts for overdue count in parallel
+        const [statsData, receiptsList, pendingList] = await Promise.all([
           fetchStats(),
-          fetchReceipts()
+          fetchReceipts(),
+          fetchPendingReceipts()
         ]);
 
         setStats(statsData);
         setReceipts(receiptsList);
+        setPendingReceipts(pendingList);
       } catch (err) {
         setError(err.message || 'Failed to load dashboard');
       } finally {
@@ -94,11 +120,11 @@ export default function Dashboard() {
     loadData();
   }, [API_BASE, token, refreshTrigger]);
 
-  // Calculate stats from stats API + overdue from receipts
+  // Calculate stats from stats API + overdue from ALL pending receipts
   const todayCount = stats?.today?.receipt_count || 0;
   const paidCount = stats?.paid?.count || 0;
   const pendingCount = stats?.pending?.count || 0;
-  const overdueCount = calculateOverdue(receipts);
+  const overdueCount = calculateOverdue(pendingReceipts);
 
   // Navigation handlers with query params
   const handleStatClick = (filterType) => {
@@ -271,35 +297,6 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-
-        {/* === Quick Navigation === */}
-        <div className="quick-actions">
-          <div className="quick-actions-header">
-            <h3 className="quick-actions-title">Quick Navigation</h3>
-          </div>
-          <div className="quick-actions-grid">
-            <div className="quick-action-btn" onClick={() => navigate('/new-receipt')}>
-              <div className="quick-action-icon">➕</div>
-              <div className="quick-action-text">Create Receipt</div>
-            </div>
-            <div className="quick-action-btn" onClick={() => navigate('/receipts')}>
-              <div className="quick-action-icon">🧾</div>
-              <div className="quick-action-text">All Receipts</div>
-            </div>
-            <div className="quick-action-btn" onClick={() => navigate('/agencies')}>
-              <div className="quick-action-icon">🏢</div>
-              <div className="quick-action-text">Travel Agencies</div>
-            </div>
-            <div className="quick-action-btn" onClick={() => navigate('/export')}>
-              <div className="quick-action-icon">⬇️</div>
-              <div className="quick-action-text">Export Data</div>
-            </div>
-            <div className="quick-action-btn" onClick={() => navigate('/analytics')}>
-              <div className="quick-action-icon">📊</div>
-              <div className="quick-action-text">Analytics</div>
-            </div>
-          </div>
-        </div>
 
       </div>
 

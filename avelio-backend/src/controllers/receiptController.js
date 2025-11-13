@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const { generateReceiptQR } = require('../utils/qrcode');
+const AuditLogger = require('../utils/audit');
+const logger = require('../utils/logger');
 
 // Generate receipt number
 // Format: KSH-CR-JUB-20251015-0001
@@ -20,9 +22,12 @@ const createReceipt = async (req, res) => {
     const user = req.user; // From auth middleware
 
     // Debug logging
-    console.log('📥 Received request body:', req.body);
-    console.log('🔍 agency_id value:', agency_id);
-    console.log('🔍 agency_id type:', typeof agency_id);
+    logger.debug('Create receipt request', {
+      agency_id,
+      amount,
+      status,
+      user_id: user.id
+    });
 
     // Validate required fields
     if (!agency_id || !amount || !status) {
@@ -41,8 +46,8 @@ const createReceipt = async (req, res) => {
     }
 
     // Check if agency exists - Handle both UUID id and agency_id code
-    console.log('🔎 Looking for agency with value:', agency_id);
-    
+    logger.debug('Looking up agency', { agency_id });
+
     // Try to determine if it's a UUID or agency_id code
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agency_id);
     
@@ -50,18 +55,18 @@ const createReceipt = async (req, res) => {
     if (isUUID) {
       // It's a UUID, search by id
       agencyCheck = await db.query(
-        'SELECT id, agency_name, agency_id FROM agencies WHERE id = $1 AND is_active = true',
+        'SELECT id, agency_name, agency_id, credit_limit, outstanding_balance FROM agencies WHERE id = $1 AND is_active = true',
         [agency_id]
       );
     } else {
       // It's an agency_id code, search by agency_id
       agencyCheck = await db.query(
-        'SELECT id, agency_name, agency_id FROM agencies WHERE agency_id = $1 AND is_active = true',
+        'SELECT id, agency_name, agency_id, credit_limit, outstanding_balance FROM agencies WHERE agency_id = $1 AND is_active = true',
         [agency_id]
       );
     }
-    
-    console.log('📋 Query result:', agencyCheck.rows);
+
+    logger.debug('Agency query result:', { count: agencyCheck.rows.length });
 
     if (agencyCheck.rows.length === 0) {
       return res.status(404).json({
@@ -72,12 +77,46 @@ const createReceipt = async (req, res) => {
 
     const agency = agencyCheck.rows[0];
 
+    // Credit limit check - only for PENDING receipts
+    if (status === 'PENDING') {
+      const currentBalance = parseFloat(agency.outstanding_balance || 0);
+      const creditLimit = parseFloat(agency.credit_limit || 0);
+      const newBalance = currentBalance + parseFloat(amount);
+
+      // Check if new balance would exceed credit limit
+      if (creditLimit > 0 && newBalance > creditLimit) {
+        const exceededAmount = newBalance - creditLimit;
+        logger.warn('Credit limit exceeded attempt', {
+          agency_id: agency.id,
+          agency_name: agency.agency_name,
+          credit_limit: creditLimit,
+          current_balance: currentBalance,
+          new_balance: newBalance,
+          exceeded_by: exceededAmount
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: 'Credit limit exceeded',
+          details: {
+            credit_limit: creditLimit,
+            current_balance: currentBalance,
+            requested_amount: amount,
+            exceeded_by: exceededAmount.toFixed(2)
+          }
+        });
+      }
+    }
+
     // Generate receipt number
     const stationCode = user.station || user.station_code || 'JUB'; // Fallback to JUB
     const receiptNumber = generateReceiptNumber(stationCode);
-    
-    console.log('👤 User object:', user);
-    console.log('🏢 Station code:', stationCode);
+
+    logger.debug('Generating receipt', {
+      user_id: user.id,
+      station_code: stationCode,
+      receipt_number: receiptNumber
+    });
 
     // Get current date and time in Africa/Juba timezone
     const now = new Date();
@@ -128,13 +167,57 @@ const createReceipt = async (req, res) => {
 
     const receipt = result.rows[0];
 
+    // Update agency outstanding balance if status is PENDING
+    if (status === 'PENDING') {
+      try {
+        await db.query(
+          `UPDATE agencies
+           SET outstanding_balance = outstanding_balance + $1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [amount, agency.id]
+        );
+        logger.info('Outstanding balance updated', {
+          agency_id: agency.id,
+          amount: amount,
+          new_balance: parseFloat(agency.outstanding_balance || 0) + parseFloat(amount)
+        });
+      } catch (balanceError) {
+        logger.error('Failed to update outstanding balance:', {
+          error: balanceError.message,
+          agency_id: agency.id
+        });
+        // Continue - receipt was created successfully
+      }
+    }
+
     // Generate QR code
     let qrCode = null;
     try {
       qrCode = await generateReceiptQR(receiptNumber);
     } catch (qrError) {
-      console.error('QR generation failed:', qrError);
+      logger.error('QR generation failed:', { error: qrError.message, receiptNumber });
       // Continue without QR code
+    }
+
+    // Audit log receipt creation
+    try {
+      await AuditLogger.logReceiptCreate(
+        user.id || user.user_id,
+        receipt.id,
+        {
+          receipt_number: receipt.receipt_number,
+          agency_id: agency.id,
+          amount: receipt.amount,
+          currency: receipt.currency,
+          status: receipt.status,
+          payment_method: receipt.payment_method
+        },
+        req.ip
+      );
+    } catch (auditError) {
+      logger.error('Audit logging failed:', { error: auditError.message });
+      // Continue even if audit fails
     }
 
     // Return success with receipt data
@@ -166,7 +249,7 @@ const createReceipt = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Create receipt error:', error);
+    logger.error('Create receipt error:', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'Failed to create receipt.'
@@ -178,6 +261,8 @@ const createReceipt = async (req, res) => {
 const getReceipts = async (req, res) => {
   try {
     const { status, agency_id, date_from, date_to, page = 1, pageSize = 20 } = req.query;
+    const userId = req.user.id;
+    const userRole = req.user.role || 'staff';
 
     // Calculate pagination
     const limit = parseInt(pageSize);
@@ -193,20 +278,29 @@ const getReceipts = async (req, res) => {
 
     // Build query for data
     let query = `
-      SELECT r.*, a.agency_id as agency_code, a.agency_name 
+      SELECT r.*, a.agency_id as agency_code, a.agency_name
       FROM receipts r
       LEFT JOIN agencies a ON r.agency_id = a.id
       WHERE r.is_void = false
     `;
-    
+
     const params = [];
     let paramCount = 1;
+
+    // Authorization filter: non-admin users only see their own receipts
+    if (userRole !== 'admin') {
+      const authFilter = ` AND r.user_id = $${paramCount}`;
+      countQuery += authFilter;
+      query += authFilter;
+      params.push(userId);
+      paramCount++;
+    }
 
     // Add filters (same for both queries)
     let filterClause = '';
     
     if (status) {
-      filterClause += ` AND r.status = $${paramCount}`;
+      filterClause += ` AND UPPER(r.status) = UPPER($${paramCount})`;
       params.push(status);
       paramCount++;
     }
@@ -272,7 +366,7 @@ const getReceipts = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get receipts error:', error);
+    logger.error('Get receipts error:', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch receipts.'
@@ -284,19 +378,21 @@ const getReceipts = async (req, res) => {
 const getReceiptById = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
 
+    // Authorization check: user must own the receipt or be admin
     const result = await db.query(
       `SELECT r.*, a.agency_id as agency_code, a.agency_name, a.contact_phone, a.contact_email
        FROM receipts r
        JOIN agencies a ON r.agency_id = a.id
-       WHERE r.id = $1`,
-      [id]
+       WHERE r.id = $1 AND (r.user_id = $2 OR $3 = 'admin')`,
+      [id, userId, req.user.role || 'staff']
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Receipt not found.'
+        message: 'Receipt not found or access denied.'
       });
     }
 
@@ -332,7 +428,7 @@ const getReceiptById = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get receipt error:', error);
+    logger.error('Get receipt error:', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch receipt.'
@@ -345,6 +441,7 @@ const updateReceiptStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, payment_date } = req.body;
+    const userId = req.user.id;
 
     if (!status) {
       return res.status(400).json({
@@ -353,20 +450,74 @@ const updateReceiptStatus = async (req, res) => {
       });
     }
 
-    // Update receipt
+    // Get current receipt data before update for audit trail and balance calculation
+    const currentReceipt = await db.query(
+      'SELECT status, amount, agency_id FROM receipts WHERE id = $1',
+      [id]
+    );
+
+    if (currentReceipt.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Receipt not found.'
+      });
+    }
+
+    const oldStatus = currentReceipt.rows[0]?.status;
+    const receiptAmount = parseFloat(currentReceipt.rows[0]?.amount || 0);
+    const agencyId = currentReceipt.rows[0]?.agency_id;
+
+    // Authorization check: user must own the receipt or be admin
     const result = await db.query(
-      `UPDATE receipts 
+      `UPDATE receipts
        SET status = $1, payment_date = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3 
+       WHERE id = $3 AND (user_id = $4 OR $5 = 'admin')
        RETURNING *`,
-      [status, payment_date || new Date().toISOString(), id]
+      [status, payment_date || new Date().toISOString(), id, userId, req.user.role || 'staff']
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Receipt not found.'
+        message: 'Receipt not found or access denied.'
       });
+    }
+
+    // Update outstanding balance if status changed from PENDING to PAID
+    if (oldStatus === 'PENDING' && status === 'PAID') {
+      try {
+        await db.query(
+          `UPDATE agencies
+           SET outstanding_balance = GREATEST(outstanding_balance - $1, 0),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [receiptAmount, agencyId]
+        );
+        logger.info('Outstanding balance reduced on payment', {
+          agency_id: agencyId,
+          amount: receiptAmount,
+          receipt_id: id
+        });
+      } catch (balanceError) {
+        logger.error('Failed to update outstanding balance:', {
+          error: balanceError.message,
+          agency_id: agencyId
+        });
+        // Continue - status was updated successfully
+      }
+    }
+
+    // Audit log status update
+    try {
+      await AuditLogger.logReceiptStatusUpdate(
+        userId,
+        id,
+        oldStatus,
+        status,
+        req.ip
+      );
+    } catch (auditError) {
+      logger.error('Audit logging failed:', { error: auditError.message });
     }
 
     res.json({
@@ -378,7 +529,7 @@ const updateReceiptStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update receipt error:', error);
+    logger.error('Update receipt error:', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'Failed to update receipt.'
@@ -391,6 +542,7 @@ const voidReceipt = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
+    const userId = req.user.id;
 
     // Validate reason
     if (!reason || reason.trim().length === 0) {
@@ -400,16 +552,16 @@ const voidReceipt = async (req, res) => {
       });
     }
 
-    // Check if receipt exists and is not already void
+    // Authorization check: Check if receipt exists, user owns it or is admin, and is not already void
     const checkResult = await db.query(
-      'SELECT id, receipt_number, is_void FROM receipts WHERE id = $1',
-      [id]
+      'SELECT id, receipt_number, is_void, status, amount, agency_id FROM receipts WHERE id = $1 AND (user_id = $2 OR $3 = \'admin\')',
+      [id, userId, req.user.role || 'staff']
     );
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Receipt not found.'
+        message: 'Receipt not found or access denied.'
       });
     }
 
@@ -424,12 +576,49 @@ const voidReceipt = async (req, res) => {
 
     // Void the receipt
     const result = await db.query(
-      `UPDATE receipts 
+      `UPDATE receipts
        SET is_void = true, void_reason = $1, void_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 
+       WHERE id = $2
        RETURNING *`,
       [reason, id]
     );
+
+    // Update outstanding balance if receipt was PENDING (reverse the charge)
+    if (receipt.status === 'PENDING') {
+      try {
+        const receiptAmount = parseFloat(receipt.amount || 0);
+        await db.query(
+          `UPDATE agencies
+           SET outstanding_balance = GREATEST(outstanding_balance - $1, 0),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [receiptAmount, receipt.agency_id]
+        );
+        logger.info('Outstanding balance reduced on void', {
+          agency_id: receipt.agency_id,
+          amount: receiptAmount,
+          receipt_id: id
+        });
+      } catch (balanceError) {
+        logger.error('Failed to update outstanding balance:', {
+          error: balanceError.message,
+          agency_id: receipt.agency_id
+        });
+        // Continue - receipt was voided successfully
+      }
+    }
+
+    // Audit log receipt void
+    try {
+      await AuditLogger.logReceiptVoid(
+        userId,
+        id,
+        reason,
+        req.ip
+      );
+    } catch (auditError) {
+      logger.error('Audit logging failed:', { error: auditError.message });
+    }
 
     res.json({
       success: true,
@@ -442,7 +631,7 @@ const voidReceipt = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Void receipt error:', error);
+    logger.error('Void receipt error:', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'Failed to void receipt.'

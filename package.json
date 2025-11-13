@@ -1,0 +1,17 @@
+{
+  "name": "avelio-credit",
+  "version": "1.0.0",
+  "description": "Avelio Credit-Lite Full Stack Application",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd avelio-backend && npm run dev",
+    "dev:frontend": "cd avelio-frontend && npm start",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "cd avelio-backend && npm start",
+    "start:frontend": "cd avelio-frontend && npm start",
+    "install:all": "npm install && cd avelio-backend && npm install && cd ../avelio-frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

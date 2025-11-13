@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import logger from './utils/logger';
+import { ToastProvider } from './contexts/ToastContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import NewReceipt from './pages/NewReceipt';
+import EditReceipt from './pages/EditReceipt';
 import ReceiptSuccess from './pages/ReceiptSuccess';
 import Account from './pages/Account';
-import Receipts from './pages/Receipts';          
+import Receipts from './pages/Receipts';
 import TravelAgencies from './pages/TravelAgencies';
 import ExportData from './pages/ExportData';
-import Analytics from './pages/Analytics';      
+import Analytics from './pages/Analytics';
 import AppHeader from './pages/AppHeader';      
 
 function App() {
@@ -23,7 +27,7 @@ function App() {
       const token = localStorage.getItem('token');
       setIsAuthenticated(!!token);
       setIsLoading(false);
-      console.log('🔐 Auth check:', !!token ? 'Authenticated' : 'Not authenticated');
+      logger.debug('🔐 Auth check:', !!token ? 'Authenticated' : 'Not authenticated');
     };
 
     // Initial check
@@ -78,51 +82,59 @@ function App() {
   }
 
   return (
-    <Router>
-      <AppHeader />
-      <Routes>
-        <Route 
-          path="/login" 
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
-        />
-        <Route 
-          path="/dashboard" 
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/new-receipt" 
-          element={isAuthenticated ? <NewReceipt /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/receipt-success" 
-          element={isAuthenticated ? <ReceiptSuccess /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/account" 
-          element={isAuthenticated ? <Account /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/receipts" 
-          element={isAuthenticated ? <Receipts /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/agencies" 
-          element={isAuthenticated ? <TravelAgencies /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/export" 
-          element={isAuthenticated ? <ExportData /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/analytics" 
-          element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="*" 
-          element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} 
-        />
-      </Routes>
-    </Router>
+    <ErrorBoundary>
+      <ToastProvider>
+        <Router>
+          <AppHeader />
+          <Routes>
+            <Route
+              path="/login"
+              element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
+            />
+            <Route
+              path="/dashboard"
+              element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/new-receipt"
+              element={isAuthenticated ? <NewReceipt /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/receipts/:id/edit"
+              element={isAuthenticated ? <EditReceipt /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/receipt-success"
+              element={isAuthenticated ? <ReceiptSuccess /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/account"
+              element={isAuthenticated ? <Account /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/receipts"
+              element={isAuthenticated ? <Receipts /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/agencies"
+              element={isAuthenticated ? <TravelAgencies /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/export"
+              element={isAuthenticated ? <ExportData /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/analytics"
+              element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="*"
+              element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
+            />
+          </Routes>
+        </Router>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 
