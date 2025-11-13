@@ -123,25 +123,85 @@ export default function TravelAgencies() {
   const triggerImport = () => fileInputRef.current?.click();
 
   const parseCSV = (text) => {
-    // very small CSV parser for comma-separated with header
-    // expected headers: agency_name,agency_id,contact_email
-    const lines = text.split(/\r?\n/).filter(Boolean);
+    // Improved CSV parser with better handling
+    // Remove BOM if present
+    text = text.replace(/^\uFEFF/, '');
+
+    // Split by various line endings and filter out empty lines
+    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
     if (lines.length === 0) return [];
-    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const idxName = header.indexOf('agency_name');
-    const idxId = header.indexOf('agency_id');
-    const idxEmail = header.indexOf('contact_email');
+
+    // Parse a CSV line handling quoted fields
+    const parseLine = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            // Escaped quote
+            current += '"';
+            i++; // Skip next quote
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // Field separator
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    // Parse header - case insensitive, flexible naming
+    const headerCols = parseLine(lines[0]);
+    const header = headerCols.map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+
+    // Find column indices - support multiple naming variations
+    const findIndex = (variations) => {
+      for (const v of variations) {
+        const idx = header.indexOf(v.toLowerCase());
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    const idxName = findIndex(['agency_name', 'name', 'agency name', 'agencyname']);
+    const idxId = findIndex(['agency_id', 'id', 'agency id', 'agencyid', 'code']);
+    const idxEmail = findIndex(['contact_email', 'email', 'contact email', 'contactemail']);
+
     const out = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim());
-      const row = {
-        agency_name: idxName >= 0 ? cols[idxName] : '',
-        agency_id: idxId >= 0 ? cols[idxId] : '',
-        contact_email: idxEmail >= 0 ? cols[idxEmail] : '',
+      const cols = parseLine(lines[i]);
+
+      // Clean up values - remove quotes
+      const cleanValue = (idx) => {
+        if (idx < 0 || idx >= cols.length) return '';
+        return cols[idx].replace(/^["']|["']$/g, '').trim();
       };
-      if (row.agency_name || row.agency_id) out.push(row);
+
+      const row = {
+        agency_name: cleanValue(idxName),
+        agency_id: cleanValue(idxId),
+        contact_email: cleanValue(idxEmail),
+      };
+
+      // Only add if we have at least a name or ID
+      if (row.agency_name || row.agency_id) {
+        out.push(row);
+      }
     }
+
     return out;
   };
 
@@ -157,7 +217,14 @@ export default function TravelAgencies() {
       const rows = parseCSV(text);
 
       if (!rows.length) {
-        setImportResult({ ok: false, message: 'No valid rows found in the CSV.' });
+        // Provide better error message
+        const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim().length > 0);
+        const firstLine = lines[0] || '';
+
+        setImportResult({
+          ok: false,
+          message: `No valid rows found in the CSV. Please ensure your CSV has:\n• Header row with columns: agency_name (or name), agency_id (or id), contact_email (or email)\n• At least one data row with agency name or ID\n\nFirst line found: "${firstLine.substring(0, 100)}${firstLine.length > 100 ? '...' : ''}"`
+        });
         setImporting(false);
         return;
       }
