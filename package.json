@@ -8,7 +8,9 @@
     "dev:frontend": "cd avelio-frontend && npm start",
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "cd avelio-backend && npm start",
-    "start:frontend": "cd avelio-frontend && npm start",
+    "start:frontend": "cd avelio-frontend && PORT=3000 HOST=0.0.0.0 npm start",
+    "start:network": "concurrently \"npm run start:backend\" \"npm run start:frontend:network\"",
+    "start:frontend:network": "cd avelio-frontend && PORT=3000 HOST=0.0.0.0 npm start",
     "install:all": "npm install && cd avelio-backend && npm install && cd ../avelio-frontend && npm install"
   },
   "devDependencies": {
