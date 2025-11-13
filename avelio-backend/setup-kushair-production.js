@@ -31,10 +31,10 @@ const users = [
     phone: '+211929754555'
   },
   {
-    username: 'ahmed.sami',
+    username: 'asami',
     name: 'Ahmed Sami',
     email: 'ahmed.sami@kushair.net',
-    password: 'KushAir@2025',
+    password: 'asami',
     employee_id: 'STF-002',
     station_code: 'JUB',
     role: 'staff',
