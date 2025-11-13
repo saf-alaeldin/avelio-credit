@@ -236,6 +236,12 @@ export default function Receipts() {
     setStatusFilter(status);
     setOverdueFilter(false);
     setPage(1);
+    // Update URL params to match the filter state
+    if (status) {
+      setSearchParams({ status: status });
+    } else {
+      setSearchParams({});
+    }
   };
 
   // Modal handlers
@@ -358,6 +364,8 @@ export default function Receipts() {
               setOverdueFilter(true);
               setStatusFilter('PENDING');
               setPage(1);
+              // Update URL params to match the overdue filter
+              setSearchParams({ filter: 'overdue' });
             }}
           >
             Overdue
@@ -375,6 +383,8 @@ export default function Receipts() {
               onChange={(e) => {
                 setDateFrom(e.target.value);
                 setOverdueFilter(false);
+                // Clear URL params when manually changing date filters
+                setSearchParams({});
               }}
             />
           </div>
@@ -387,6 +397,8 @@ export default function Receipts() {
               onChange={(e) => {
                 setDateTo(e.target.value);
                 setOverdueFilter(false);
+                // Clear URL params when manually changing date filters
+                setSearchParams({});
               }}
             />
           </div>
