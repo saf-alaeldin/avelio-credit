@@ -111,11 +111,11 @@ async function generateReceiptPDF(receiptData) {
 
       // Shortcuts + safe fallbacks
       const companyName = receiptData?.company?.name || 'KUSH AIR';
-      const companyTag = receiptData?.company?.tagline || 'Spirit of the South';
-      const companyAddr = receiptData?.company?.address || 'Amin Mohamed Building, Juba Market, Juba, South Sudan';
-      const companyContacts = receiptData?.company?.contacts || 'finance@kushair.net | +211 912 310 004';
+      const companyTag = receiptData?.company?.tagline || 'IATA: KU';
+      const companyAddr = receiptData?.company?.address || 'Amin Mohamed Building, Opposite KCB, Juba Town';
+      const companyContacts = receiptData?.company?.contacts || 'finance@kushair.net | +211929754555';
       const iataCode = receiptData?.company?.iata_code || 'KU';
-      const station = receiptData?.station || '—';
+      const station = receiptData?.station || 'JUB';
       const receiptNo = receiptData?.receipt_number || '—';
       const status = (receiptData?.status || '').toUpperCase();
       const cashier = receiptData?.issued_by_name || receiptData?.issued_by || 'Authorized Staff';
