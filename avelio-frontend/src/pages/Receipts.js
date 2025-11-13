@@ -51,6 +51,7 @@ export default function Receipts() {
   const [dateTo, setDateTo] = useState('');
   const [overdueFilter, setOverdueFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize filters from URL params on mount
   useEffect(() => {
@@ -87,12 +88,16 @@ export default function Receipts() {
       newStatusFilter = 'PENDING';
     }
 
-    // Batch update all filters at once to prevent multiple renders
+    // Use functional updates to batch state changes
+    setIsInitialized(false); // Prevent fetching during state updates
     setStatusFilter(newStatusFilter);
     setDateFrom(newDateFrom);
     setDateTo(newDateTo);
     setOverdueFilter(newOverdueFilter);
     setPage(1);
+
+    // Mark as initialized after a brief delay to ensure all states are updated
+    setTimeout(() => setIsInitialized(true), 0);
   }, [searchParams]);
 
   // Fetch receipts function
@@ -179,8 +184,10 @@ export default function Receipts() {
   };
 
   useEffect(() => {
-    fetchReceipts();
-  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger]);
+    if (isInitialized) {
+      fetchReceipts();
+    }
+  }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger, isInitialized]);
 
   const pages = Math.max(1, Math.ceil((total || 0) / pageSize));
   
@@ -235,6 +242,7 @@ export default function Receipts() {
   };
 
   const clearFilters = () => {
+    setIsInitialized(true); // Keep initialized state
     setStatusFilter('');
     setDateFrom('');
     setDateTo('');
@@ -245,6 +253,7 @@ export default function Receipts() {
   };
 
   const handleStatusFilterClick = (status) => {
+    setIsInitialized(true); // Keep initialized state
     setStatusFilter(status);
     setOverdueFilter(false);
     setPage(1);
@@ -309,6 +318,7 @@ export default function Receipts() {
             type="text"
             value={searchQuery}
             onChange={(e) => {
+              setIsInitialized(true); // Keep initialized state
               setSearchQuery(e.target.value);
               setPage(1);
             }}
@@ -329,6 +339,7 @@ export default function Receipts() {
           {searchQuery && (
             <button
               onClick={() => {
+                setIsInitialized(true); // Keep initialized state
                 setSearchQuery('');
                 setPage(1);
               }}
@@ -378,6 +389,7 @@ export default function Receipts() {
           <button
             className={`receipts-filter-tab ${overdueFilter ? 'active' : ''}`}
             onClick={() => {
+              setIsInitialized(true); // Keep initialized state
               setOverdueFilter(true);
               setStatusFilter('PENDING');
               setPage(1);
@@ -398,6 +410,7 @@ export default function Receipts() {
               className="receipts-date-input"
               value={dateFrom}
               onChange={(e) => {
+                setIsInitialized(true); // Keep initialized state
                 setDateFrom(e.target.value);
                 setOverdueFilter(false);
                 // Clear URL params when manually changing date filters
@@ -412,6 +425,7 @@ export default function Receipts() {
               className="receipts-date-input"
               value={dateTo}
               onChange={(e) => {
+                setIsInitialized(true); // Keep initialized state
                 setDateTo(e.target.value);
                 setOverdueFilter(false);
                 // Clear URL params when manually changing date filters
