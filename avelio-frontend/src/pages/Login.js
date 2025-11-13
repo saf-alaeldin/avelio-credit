@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, AlertCircle, Plane } from 'lucide-react';
+import { Lock, User, AlertCircle, Plane } from 'lucide-react';
 import { handleLogin } from '../utils/auth';
 import './Login.css';
 
 function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -18,18 +18,18 @@ function Login() {
 
     try {
       console.log('🔐 Attempting login...');
-      
+
       // Get API URL from environment or use port 5001 with /api/v1
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
       console.log('📡 API URL:', apiUrl);
-      
-      // Make login request
+
+      // Make login request with username
       const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       console.log('📥 Response status:', response.status);
@@ -77,8 +77,8 @@ function Login() {
           <div className="logo-icon">
             <Plane size={36} />
           </div>
-          <h1 className="login-title">Avelio Credit</h1>
-          <p className="login-subtitle">Kush Air Credit Management</p>
+          <h1 className="login-title">Kush Air</h1>
+          <p className="login-subtitle">Credit Management System</p>
         </div>
 
         {/* Login Form */}
@@ -90,17 +90,17 @@ function Login() {
             </div>
           )}
 
-          {/* Email Input */}
+          {/* Username Input */}
           <div className="form-group">
-            <label>Email Address</label>
+            <label>Username</label>
             <div className="input-wrapper">
-              <Mail size={20} className="input-icon" />
+              <User size={20} className="input-icon" />
               <input
-                type="email"
+                type="text"
                 className="form-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your.email@kushair.com"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
                 required
                 autoFocus
                 disabled={loading}
@@ -151,14 +151,14 @@ function Login() {
           {/* Info Box */}
           <div className="login-info">
             <p>
-              <strong>Note:</strong> Use your Kush Air employee credentials to access the credit management system.
+              <strong>Note:</strong> Use your Kush Air username and password to access the system.
             </p>
           </div>
         </form>
 
         {/* Footer */}
         <div className="login-footer">
-          <p className="powered-by">Powered by Avelio • Spirit of the South</p>
+          <p className="powered-by">Kush Air • IATA: KU • Juba, South Sudan</p>
         </div>
       </div>
     </div>

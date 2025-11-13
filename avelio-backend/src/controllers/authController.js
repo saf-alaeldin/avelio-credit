@@ -6,16 +6,25 @@ const logger = require('../utils/logger');
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password)
-      return res.status(400).json({ message: 'Email and password are required.' });
+    const { email, username, password } = req.body || {};
+    const loginIdentifier = username || email; // Use username if provided, fallback to email
+
+    if (!loginIdentifier || !password)
+      return res.status(400).json({ message: 'Username and password are required.' });
 
     const client = await pool.connect();
     try {
-      const userRes = await client.query('SELECT * FROM users WHERE email=$1', [email]);
+      // Try to find user by username first, then by email
+      let userRes;
+      if (username) {
+        userRes = await client.query('SELECT * FROM users WHERE username=$1', [username]);
+      } else {
+        userRes = await client.query('SELECT * FROM users WHERE email=$1', [email]);
+      }
+
       if (userRes.rowCount === 0) {
         // Log failed login - user not found
-        await AuditLogger.logFailedLogin(email, req.ip, 'User not found').catch(() => {});
+        await AuditLogger.logFailedLogin(loginIdentifier, req.ip, 'User not found').catch(() => {});
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
@@ -23,14 +32,14 @@ exports.login = async (req, res) => {
 
       // Check if user is active
       if (!user.is_active) {
-        await AuditLogger.logFailedLogin(email, req.ip, 'Account inactive').catch(() => {});
+        await AuditLogger.logFailedLogin(loginIdentifier, req.ip, 'Account inactive').catch(() => {});
         return res.status(403).json({ message: 'Account is inactive' });
       }
 
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
         // Log failed login - wrong password
-        await AuditLogger.logFailedLogin(email, req.ip, 'Invalid password').catch(() => {});
+        await AuditLogger.logFailedLogin(loginIdentifier, req.ip, 'Invalid password').catch(() => {});
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
@@ -40,7 +49,13 @@ exports.login = async (req, res) => {
       }
 
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role, name: user.name },
+        {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          name: user.name
+        },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
       );
@@ -59,6 +74,7 @@ exports.login = async (req, res) => {
           user: {
             id: user.id,
             name: user.name,
+            username: user.username,
             email: user.email,
             phone: user.phone,
             employee_id: user.employee_id,
