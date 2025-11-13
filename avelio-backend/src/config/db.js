@@ -27,9 +27,11 @@ if (isProduction && process.env.DATABASE_URL) {
     database: process.env.DB_NAME || 'avelio_db',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    max: 50, // Increased pool size for better concurrent handling
+    min: 5,  // Keep minimum connections ready
+    idleTimeoutMillis: 60000, // Increased to 60s to keep connections alive longer
+    connectionTimeoutMillis: 10000, // Increased to 10s for slower networks
+    statement_timeout: 30000, // 30s query timeout
   };
 }
 
