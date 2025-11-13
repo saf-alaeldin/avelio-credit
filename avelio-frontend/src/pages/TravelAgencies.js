@@ -175,9 +175,9 @@ export default function TravelAgencies() {
       return -1;
     };
 
-    const idxName = findIndex(['agency_name', 'name', 'agency name', 'agencyname']);
-    const idxId = findIndex(['agency_id', 'id', 'agency id', 'agencyid', 'code']);
-    const idxEmail = findIndex(['contact_email', 'email', 'contact email', 'contactemail']);
+    const idxName = findIndex(['agency_name', 'name', 'agency name', 'agencyname', 'surname', 'customer name', 'customername', 'company', 'company name']);
+    const idxId = findIndex(['agency_id', 'id', 'agency id', 'agencyid', 'code', 'customer identifier', 'customeridentifier', 'customer id', 'customerid']);
+    const idxEmail = findIndex(['contact_email', 'email', 'contact email', 'contactemail', 'email address', 'emailaddress']);
 
     const out = [];
 
@@ -223,7 +223,7 @@ export default function TravelAgencies() {
 
         setImportResult({
           ok: false,
-          message: `No valid rows found in the CSV. Please ensure your CSV has:\n• Header row with columns: agency_name (or name), agency_id (or id), contact_email (or email)\n• At least one data row with agency name or ID\n\nFirst line found: "${firstLine.substring(0, 100)}${firstLine.length > 100 ? '...' : ''}"`
+          message: `No valid rows found in the CSV. Please ensure your CSV has:\n• Header row with name column: agency_name, name, surname, customer name, company\n• Header row with ID column: agency_id, id, code, customer identifier\n• Header row with email column: contact_email, email, email address\n• At least one data row with agency name or ID\n\nFirst line found: "${firstLine.substring(0, 100)}${firstLine.length > 100 ? '...' : ''}"`
         });
         setImporting(false);
         return;
