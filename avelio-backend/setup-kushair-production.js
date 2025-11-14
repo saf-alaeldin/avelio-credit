@@ -41,10 +41,10 @@ const users = [
     phone: '+211929754556'
   },
   {
-    username: 'sarah.lado',
+    username: 'sarah',
     name: 'Sarah Lado',
     email: 'sarah.lado@kushair.net',
-    password: 'KushAir@2025',
+    password: 'sarah',
     employee_id: 'STF-003',
     station_code: 'JUB',
     role: 'staff',
