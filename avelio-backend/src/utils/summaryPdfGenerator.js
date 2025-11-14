@@ -241,6 +241,9 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
         return yPos + rowHeight;
       };
 
+      // Track page numbers
+      let pageNumber = 1;
+
       // Helper function to draw footer
       const drawFooter = () => {
         const footerY = doc.page.height - doc.page.margins.bottom - 40;
@@ -260,25 +263,73 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
            .text('Amin Mohamed Building, Opposite KCB, Juba Town | finance@kushair.net | +211929754555',
                  doc.page.margins.left, footerY + 24,
                  { width: pageWidth, align: 'center' });
+
+        // Page number
+        doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+           .text(`Page ${pageNumber}`,
+                 doc.page.width - doc.page.margins.right - 60, footerY + 10,
+                 { width: 60, align: 'right' });
       };
 
-      // Helper function to add new page with minimal header
+      // Helper function to add new page with logo and header
       const addContinuationPage = () => {
+        pageNumber++; // Increment page number
         doc.addPage();
 
         // Decorative top border
         doc.rect(0, 0, doc.page.width, 4).fill(PRIMARY);
 
-        // Minimal header
-        const minimalHeaderY = doc.page.margins.top + 10;
-        doc.fillColor(TEXT).font('UI-Bold').fontSize(16)
-           .text(companyName, doc.page.margins.left, minimalHeaderY);
-        doc.font('UI-Regular').fontSize(10).fillColor(MUTED)
-           .text(`${period === 'daily' ? 'Daily' : 'Monthly'} Receipts Summary (continued)`,
-                 doc.page.width - doc.page.margins.right - 200, minimalHeaderY,
-                 { width: 200, align: 'right' });
+        // Logo and header section
+        const headerY = doc.page.margins.top + 10;
+        const logoSize = 50;
+        const logoPath = path.join(__dirname, '../assets/logo.png');
 
-        const newY = minimalHeaderY + 30;
+        // Left: Logo
+        if (fs.existsSync(logoPath)) {
+          try {
+            doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 6)
+               .fillOpacity(1)
+               .fill('#FFFFFF')
+               .strokeColor(PRIMARY)
+               .lineWidth(1.5)
+               .stroke();
+            doc.image(logoPath, doc.page.margins.left + 4, headerY + 4, {
+              fit: [logoSize - 8, logoSize - 8],
+              align: 'center',
+              valign: 'center'
+            });
+          } catch (e) {
+            // Fallback to text logo
+            doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 6).fill(PRIMARY);
+            doc.fillColor('#fff').font('UI-Bold').fontSize(18)
+               .text(companyName.charAt(0), doc.page.margins.left + 14, headerY + 12);
+          }
+        } else {
+          doc.roundedRect(doc.page.margins.left, headerY, logoSize, logoSize, 6).fill(PRIMARY);
+          doc.fillColor('#fff').font('UI-Bold').fontSize(18)
+             .text(companyName.charAt(0), doc.page.margins.left + 14, headerY + 12);
+        }
+
+        // Center: Company info
+        const companyX = doc.page.margins.left + logoSize + 12;
+        const logoCenterY = headerY + logoSize / 2;
+
+        doc.fillColor(TEXT).font('UI-Bold').fontSize(14)
+           .text(companyName, companyX, logoCenterY - 15);
+        doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+           .text(`IATA: ${iataCode}`, companyX, logoCenterY + 5);
+
+        // Right: Continued label
+        doc.font('UI-Bold').fontSize(12).fillColor(PRIMARY)
+           .text(`${period === 'daily' ? 'Daily' : 'Monthly'} Receipts Summary`,
+                 doc.page.width - doc.page.margins.right - 180, logoCenterY - 15,
+                 { width: 180, align: 'right' });
+        doc.font('UI-Regular').fontSize(10).fillColor(MUTED)
+           .text('(continued)',
+                 doc.page.width - doc.page.margins.right - 180, logoCenterY + 5,
+                 { width: 180, align: 'right' });
+
+        const newY = headerY + logoSize + 16;
 
         // Divider
         doc.moveTo(doc.page.margins.left, newY)
@@ -300,7 +351,7 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
           // Draw footer on current page
           drawFooter();
 
-          // Start new page with minimal header
+          // Start new page with logo and header
           currentY = addContinuationPage();
 
           // Draw table header on new page
