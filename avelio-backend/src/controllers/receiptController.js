@@ -287,8 +287,8 @@ const getReceipts = async (req, res) => {
     const params = [];
     let paramCount = 1;
 
-    // Authorization filter: non-admin users only see their own receipts
-    if (userRole !== 'admin') {
+    // Authorization filter: only staff see their own receipts (admin and manager see all)
+    if (userRole !== 'admin' && userRole !== 'manager') {
       const authFilter = ` AND r.user_id = $${paramCount}`;
       countQuery += authFilter;
       query += authFilter;
@@ -379,14 +379,15 @@ const getReceiptById = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const userRole = req.user.role || 'staff';
 
-    // Authorization check: user must own the receipt or be admin
+    // Authorization check: user must own the receipt, be admin, or be manager
     const result = await db.query(
       `SELECT r.*, a.agency_id as agency_code, a.agency_name, a.contact_phone, a.contact_email
        FROM receipts r
        JOIN agencies a ON r.agency_id = a.id
-       WHERE r.id = $1 AND (r.user_id = $2 OR $3 = 'admin')`,
-      [id, userId, req.user.role || 'staff']
+       WHERE r.id = $1 AND (r.user_id = $2 OR $3 = 'admin' OR $3 = 'manager')`,
+      [id, userId, userRole]
     );
 
     if (result.rows.length === 0) {
@@ -466,14 +467,15 @@ const updateReceiptStatus = async (req, res) => {
     const oldStatus = currentReceipt.rows[0]?.status;
     const receiptAmount = parseFloat(currentReceipt.rows[0]?.amount || 0);
     const agencyId = currentReceipt.rows[0]?.agency_id;
+    const userRole = req.user.role || 'staff';
 
-    // Authorization check: user must own the receipt or be admin
+    // Authorization check: user must own the receipt, be admin, or be manager
     const result = await db.query(
       `UPDATE receipts
        SET status = $1, payment_date = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3 AND (user_id = $4 OR $5 = 'admin')
+       WHERE id = $3 AND (user_id = $4 OR $5 = 'admin' OR $5 = 'manager')
        RETURNING *`,
-      [status, payment_date || new Date().toISOString(), id, userId, req.user.role || 'staff']
+      [status, payment_date || new Date().toISOString(), id, userId, userRole]
     );
 
     if (result.rows.length === 0) {
@@ -552,10 +554,12 @@ const voidReceipt = async (req, res) => {
       });
     }
 
-    // Authorization check: Check if receipt exists, user owns it or is admin, and is not already void
+    const userRole = req.user.role || 'staff';
+
+    // Authorization check: Check if receipt exists, user owns it, is admin, or is manager, and is not already void
     const checkResult = await db.query(
-      'SELECT id, receipt_number, is_void, status, amount, agency_id FROM receipts WHERE id = $1 AND (user_id = $2 OR $3 = \'admin\')',
-      [id, userId, req.user.role || 'staff']
+      'SELECT id, receipt_number, is_void, status, amount, agency_id FROM receipts WHERE id = $1 AND (user_id = $2 OR $3 = \'admin\' OR $3 = \'manager\')',
+      [id, userId, userRole]
     );
 
     if (checkResult.rows.length === 0) {
