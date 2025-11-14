@@ -77,27 +77,62 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
       let currentY = doc.page.margins.top + 10;
 
-      // Header Section
-      doc.fillColor(TEXT).font('UI-Bold').fontSize(24)
-         .text(companyName, doc.page.margins.left, currentY);
+      // Header Section with Logo
+      const logoSize = 70;
+      const logoPath = path.join(__dirname, '../assets/logo.png');
 
-      currentY += 28;
-      doc.font('UI-Regular').fontSize(10).fillColor(MUTED)
-         .text(`${companyTag} | IATA: ${iataCode}`, doc.page.margins.left, currentY);
+      // Left: Logo
+      if (fs.existsSync(logoPath)) {
+        try {
+          doc.roundedRect(doc.page.margins.left, currentY, logoSize, logoSize, 8)
+             .fillOpacity(1)
+             .fill('#FFFFFF')
+             .strokeColor(PRIMARY)
+             .lineWidth(2)
+             .stroke();
+          doc.image(logoPath, doc.page.margins.left + 6, currentY + 6, {
+            fit: [logoSize - 12, logoSize - 12],
+            align: 'center',
+            valign: 'center'
+          });
+        } catch (e) {
+          // Fallback to text logo
+          doc.roundedRect(doc.page.margins.left, currentY, logoSize, logoSize, 8).fill(PRIMARY);
+          doc.fillColor('#fff').font('UI-Bold').fontSize(24)
+             .text(companyName.charAt(0), doc.page.margins.left + 20, currentY + 15);
+        }
+      } else {
+        doc.roundedRect(doc.page.margins.left, currentY, logoSize, logoSize, 8).fill(PRIMARY);
+        doc.fillColor('#fff').font('UI-Bold').fontSize(24)
+           .text(companyName.charAt(0), doc.page.margins.left + 20, currentY + 15);
+      }
 
-      // Title - right aligned
-      const titleY = doc.page.margins.top + 10;
+      // Center: Company info (vertically centered with logo)
+      const companyX = doc.page.margins.left + logoSize + 14;
+      const logoCenterY = currentY + logoSize / 2;
+      const textBlockHeight = 40;
+      const textStartY = logoCenterY - textBlockHeight / 2;
+
+      doc.fillColor(TEXT).font('UI-Bold').fontSize(20)
+         .text(companyName, companyX, textStartY);
+      doc.font('UI-Regular').fontSize(9).fillColor(MUTED)
+         .text(companyTag, companyX, textStartY + 24);
+      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+         .text(`IATA: ${iataCode}`, companyX, textStartY + 38);
+
+      // Right: Title aligned with logo
+      const titleX = doc.page.width - doc.page.margins.right - 240;
       doc.font('UI-Bold').fontSize(18).fillColor(PRIMARY)
          .text(`${period === 'daily' ? 'Daily' : 'Monthly'} Receipts Summary`,
-               doc.page.width - doc.page.margins.right - 240, titleY,
+               titleX, textStartY,
                { width: 240, align: 'right' });
 
       doc.font('UI-Regular').fontSize(11).fillColor(MUTED)
          .text(periodLabel,
-               doc.page.width - doc.page.margins.right - 240, titleY + 24,
+               titleX, textStartY + 24,
                { width: 240, align: 'right' });
 
-      currentY += 30;
+      currentY += logoSize + 20;
 
       // Divider
       doc.moveTo(doc.page.margins.left, currentY)
