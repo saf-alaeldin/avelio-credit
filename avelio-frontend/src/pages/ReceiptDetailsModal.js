@@ -1,5 +1,5 @@
 // src/components/ReceiptDetailsModal.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './ReceiptDetailsModal.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
@@ -12,12 +12,53 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   const [voidReason, setVoidReason] = useState('');
   const [isVoiding, setIsVoiding] = useState(false);
 
+  // Partial payment states
+  const [showPartialPayment, setShowPartialPayment] = useState(false);
+  const [partialAmount, setPartialAmount] = useState('');
+  const [partialPaymentMethod, setPartialPaymentMethod] = useState('CASH');
+  const [partialRemarks, setPartialRemarks] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
   if (!isOpen || !receipt) return null;
 
   const token =
     localStorage.getItem('token') ||
     localStorage.getItem('authToken') ||
     sessionStorage.getItem('token');
+
+  // Fetch payment history when modal opens
+  useEffect(() => {
+    if (isOpen && receipt?.id) {
+      fetchPayments();
+    }
+  }, [isOpen, receipt?.id]);
+
+  // Fetch payment history
+  const fetchPayments = async () => {
+    try {
+      setLoadingPayments(true);
+      const res = await fetch(`${API_BASE}/payments/receipt/${receipt.id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPayments(data.data.payments || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch payments:', err);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  // Calculate amounts
+  const totalAmount = parseFloat(receipt.amount || 0);
+  const amountPaid = parseFloat(receipt.amount_paid || 0);
+  const amountRemaining = totalAmount - amountPaid;
+  const hasPartialPayments = payments.length > 0;
 
   // Check if receipt is overdue
   const isOverdue = () => {
@@ -28,9 +69,12 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   };
 
   // Check if "Mark as Paid" button should be shown
-  const canMarkAsPaid = receipt.status?.toUpperCase() === 'PENDING' || isOverdue();
+  const canMarkAsPaid = (receipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
 
-  // Handle Mark as Paid
+  // Check if partial payment is allowed
+  const canMakePartialPayment = (receipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
+
+  // Handle Mark as Paid (full payment)
   const handleMarkAsPaid = async () => {
     try {
       setIsUpdating(true);
@@ -67,6 +111,74 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     } catch (err) {
       setError(err.message || 'Failed to mark as paid');
       setIsUpdating(false);
+    }
+  };
+
+  // Handle Partial Payment
+  const handlePartialPayment = async () => {
+    const amount = parseFloat(partialAmount);
+
+    if (!amount || amount <= 0) {
+      setError('Please enter a valid payment amount');
+      return;
+    }
+
+    if (amount > amountRemaining) {
+      setError(`Payment amount cannot exceed remaining balance ($${amountRemaining.toFixed(2)})`);
+      return;
+    }
+
+    try {
+      setIsProcessingPayment(true);
+      setError('');
+
+      const res = await fetch(`${API_BASE}/payments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          receipt_id: receipt.id,
+          amount: amount,
+          payment_method: partialPaymentMethod,
+          remarks: partialRemarks
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to process payment');
+      }
+
+      // Show success
+      setSuccess(true);
+      setIsProcessingPayment(false);
+      setShowPartialPayment(false);
+
+      // Refresh payments
+      await fetchPayments();
+
+      // Wait and notify parent
+      setTimeout(() => {
+        if (onStatusUpdated) {
+          onStatusUpdated(receipt.id);
+        }
+        // Reset form
+        setPartialAmount('');
+        setPartialRemarks('');
+        setPartialPaymentMethod('CASH');
+
+        // If fully paid, close modal
+        if (data.data.receipt.amount_remaining === 0) {
+          onClose();
+        }
+      }, 1500);
+
+    } catch (err) {
+      setError(err.message || 'Failed to process payment');
+      setIsProcessingPayment(false);
     }
   };
 
@@ -137,7 +249,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   // Format date and time
   const formatDateTime = (dateStr, timeStr) => {
     if (!dateStr) return '-';
-    
+
     const date = new Date(dateStr);
     const dateFormatted = new Intl.DateTimeFormat('en-GB', {
       day: '2-digit',
@@ -179,7 +291,30 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
 
           {success && (
             <div className="modal-success">
-              ✓ Receipt marked as paid successfully!
+              ✓ {hasPartialPayments ? 'Payment processed successfully!' : 'Receipt marked as paid successfully!'}
+            </div>
+          )}
+
+          {/* Payment Summary (if partial payments exist) */}
+          {hasPartialPayments && (
+            <div className="payment-summary-card">
+              <h3 className="payment-summary-title">Payment Summary</h3>
+              <div className="payment-summary-grid">
+                <div className="payment-summary-item">
+                  <span className="payment-summary-label">Total Amount:</span>
+                  <span className="payment-summary-value">${totalAmount.toFixed(2)}</span>
+                </div>
+                <div className="payment-summary-item">
+                  <span className="payment-summary-label">Amount Paid:</span>
+                  <span className="payment-summary-value payment-paid">${amountPaid.toFixed(2)}</span>
+                </div>
+                <div className="payment-summary-item">
+                  <span className="payment-summary-label">Amount Remaining:</span>
+                  <span className={`payment-summary-value payment-remaining ${amountRemaining === 0 ? 'payment-complete' : ''}`}>
+                    ${amountRemaining.toFixed(2)}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -202,16 +337,16 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
 
             {/* Amount */}
             <div className="modal-detail-item">
-              <span className="modal-detail-label">Amount</span>
+              <span className="modal-detail-label">Total Amount</span>
               <span className="modal-detail-value modal-amount">
-                {Number(receipt.amount || 0).toFixed(2)} {receipt.currency || 'USD'}
+                {totalAmount.toFixed(2)} {receipt.currency || 'USD'}
               </span>
             </div>
 
             {/* Status */}
             <div className="modal-detail-item">
               <span className="modal-detail-label">Status</span>
-              <span 
+              <span
                 className={`modal-status-badge ${
                   receipt.status?.toLowerCase() === 'paid' ? 'paid' : 'pending'
                 }`}
@@ -291,6 +426,36 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
               </div>
             )}
           </div>
+
+          {/* Payment History */}
+          {hasPartialPayments && (
+            <div className="payment-history-section">
+              <h3 className="payment-history-title">Payment History</h3>
+              {loadingPayments ? (
+                <p style={{textAlign: 'center', color: '#64748B'}}>Loading payments...</p>
+              ) : (
+                <div className="payment-history-list">
+                  {payments.map((payment, index) => (
+                    <div key={payment.id} className="payment-history-item">
+                      <div className="payment-history-header">
+                        <span className="payment-history-number">#{index + 1}</span>
+                        <span className="payment-history-amount">${parseFloat(payment.amount).toFixed(2)}</span>
+                      </div>
+                      <div className="payment-history-details">
+                        <span>Payment #: {payment.payment_number}</span>
+                        <span>{formatDateTime(payment.payment_date, payment.payment_time)}</span>
+                        <span>Method: {payment.payment_method}</span>
+                        {payment.created_by && <span>By: {payment.created_by}</span>}
+                      </div>
+                      {payment.remarks && (
+                        <div className="payment-history-remarks">{payment.remarks}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -301,6 +466,17 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
           >
             📄 Download PDF
           </button>
+
+          {/* Show Partial Payment button */}
+          {canMakePartialPayment && !receipt.is_void && (
+            <button
+              className="modal-btn modal-btn-warning"
+              onClick={() => setShowPartialPayment(true)}
+              disabled={isUpdating || success || isVoiding || isProcessingPayment}
+            >
+              💰 Partial Payment
+            </button>
+          )}
 
           {/* Show Void button if receipt is not already voided */}
           {!receipt.is_void && (
@@ -319,11 +495,109 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
               onClick={handleMarkAsPaid}
               disabled={isUpdating || success || isVoiding}
             >
-              {success ? '✓ Marked as Paid!' : isUpdating ? 'Updating...' : '✓ Mark as Paid'}
+              {success ? '✓ Marked as Paid!' : isUpdating ? 'Updating...' : '✓ Mark as Paid (Full)'}
             </button>
           )}
         </div>
       </div>
+
+      {/* Partial Payment Modal */}
+      {showPartialPayment && (
+        <div className="modal-backdrop" onClick={() => !isProcessingPayment && setShowPartialPayment(false)}>
+          <div className="modal-container modal-container-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Partial Payment</h2>
+              <button
+                className="modal-close-btn"
+                onClick={() => setShowPartialPayment(false)}
+                disabled={isProcessingPayment}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="payment-info-box">
+                <p><strong>Receipt:</strong> {receipt.receipt_number}</p>
+                <p><strong>Total Amount:</strong> ${totalAmount.toFixed(2)}</p>
+                <p><strong>Already Paid:</strong> ${amountPaid.toFixed(2)}</p>
+                <p className="payment-remaining-highlight">
+                  <strong>Remaining:</strong> ${amountRemaining.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="modal-detail-item modal-detail-full">
+                <label className="modal-detail-label">
+                  Payment Amount <span style={{color: '#EF4444'}}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={amountRemaining}
+                  className="payment-amount-input"
+                  placeholder={`Enter amount (max: $${amountRemaining.toFixed(2)})`}
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  disabled={isProcessingPayment}
+                  autoFocus
+                />
+              </div>
+
+              <div className="modal-detail-item modal-detail-full">
+                <label className="modal-detail-label">Payment Method</label>
+                <select
+                  className="payment-method-select"
+                  value={partialPaymentMethod}
+                  onChange={(e) => setPartialPaymentMethod(e.target.value)}
+                  disabled={isProcessingPayment}
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                  <option value="CREDIT_CARD">Credit Card</option>
+                  <option value="CHECK">Check</option>
+                  <option value="MOBILE_MONEY">Mobile Money</option>
+                </select>
+              </div>
+
+              <div className="modal-detail-item modal-detail-full">
+                <label className="modal-detail-label">Remarks (Optional)</label>
+                <textarea
+                  className="payment-remarks-input"
+                  placeholder="Add any notes about this payment..."
+                  value={partialRemarks}
+                  onChange={(e) => setPartialRemarks(e.target.value)}
+                  rows="2"
+                  disabled={isProcessingPayment}
+                />
+              </div>
+
+              {error && (
+                <div className="modal-error">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowPartialPayment(false)}
+                disabled={isProcessingPayment}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handlePartialPayment}
+                disabled={isProcessingPayment || !partialAmount}
+              >
+                {isProcessingPayment ? 'Processing...' : `Process Payment ($${partialAmount || '0.00'})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Void Confirmation Dialog */}
       {showVoidConfirm && (
@@ -354,7 +628,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
               <div className="void-receipt-info">
                 <p><strong>Receipt:</strong> {receipt.receipt_number}</p>
                 <p><strong>Agency:</strong> {receipt.agency?.agency_name || receipt.agency_name}</p>
-                <p><strong>Amount:</strong> {Number(receipt.amount || 0).toFixed(2)} {receipt.currency || 'USD'}</p>
+                <p><strong>Amount:</strong> {totalAmount.toFixed(2)} {receipt.currency || 'USD'}</p>
               </div>
 
               <div className="modal-detail-item modal-detail-full">

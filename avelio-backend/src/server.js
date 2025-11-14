@@ -136,6 +136,7 @@ const statsRoutes = require('./routes/statsRoutes');
 const exportRoutes = require('./routes/exportRoutes');
 const agencyRoutes = require('./routes/agencyRoutes');
 const userRoutes = require('./routes/userRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 
 
@@ -147,6 +148,7 @@ app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v1/export', exportRoutes);
 app.use('/api/v1/agencies', agencyRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 
 // 404 handler
 app.use((req, res) => {
