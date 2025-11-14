@@ -12,4 +12,10 @@ router.get('/receipts', exportController.exportToCSV);
 // GET /api/v1/export/summary - Export summary by agency to CSV
 router.get('/summary', exportController.exportSummaryCSV);
 
+// GET /api/v1/export/daily-summary - Export daily receipts summary as PDF
+router.get('/daily-summary', exportController.exportDailySummaryPDF);
+
+// GET /api/v1/export/monthly-summary - Export monthly receipts summary as PDF
+router.get('/monthly-summary', exportController.exportMonthlySummaryPDF);
+
 module.exports = router;

@@ -26,9 +26,13 @@ export default function ExportData() {
   const [filters, setFilters] = useState({
     status: '',
     dateFrom: '',
-    dateTo: '',
-    format: 'csv'
+    dateTo: ''
   });
+
+  const token =
+    localStorage.getItem('token') ||
+    localStorage.getItem('authToken') ||
+    sessionStorage.getItem('token');
 
   const convertToCSV = (data) => {
     if (!data || data.length === 0) return '';
@@ -83,7 +87,7 @@ export default function ExportData() {
     window.URL.revokeObjectURL(url);
   };
 
-  const handleExport = async () => {
+  const handleExportCSV = async () => {
     try {
       setLoading(true);
       setError('');
@@ -105,20 +109,96 @@ export default function ExportData() {
         return;
       }
 
-      // Export based on format
-      if (filters.format === 'csv') {
-        const csv = convertToCSV(receipts);
-        const filename = `receipts_export_${new Date().toISOString().split('T')[0]}.csv`;
-        downloadFile(csv, filename, 'text/csv;charset=utf-8;');
-        setSuccess(`Successfully exported ${receipts.length} receipts to CSV`);
-      } else if (filters.format === 'json') {
-        const json = JSON.stringify(receipts, null, 2);
-        const filename = `receipts_export_${new Date().toISOString().split('T')[0]}.json`;
-        downloadFile(json, filename, 'application/json');
-        setSuccess(`Successfully exported ${receipts.length} receipts to JSON`);
-      }
+      // Export to CSV
+      const csv = convertToCSV(receipts);
+      const filename = `receipts_export_${new Date().toISOString().split('T')[0]}.csv`;
+      downloadFile(csv, filename, 'text/csv;charset=utf-8;');
+      setSuccess(`Successfully exported ${receipts.length} receipts to CSV`);
+
     } catch (e) {
       setError(e.message || 'Failed to export data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDailySummaryPDF = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+
+      // Use today's date
+      const today = new Date().toISOString().split('T')[0];
+
+      // Fetch PDF from backend
+      const url = `${API_BASE}/export/daily-summary?date=${today}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate daily summary');
+      }
+
+      // Download PDF
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `daily-summary-${today}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setSuccess('Successfully downloaded daily summary PDF');
+
+    } catch (e) {
+      setError(e.message || 'Failed to generate daily summary');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMonthlySummaryPDF = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+
+      // Use current month
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      // Fetch PDF from backend
+      const url = `${API_BASE}/export/monthly-summary?year=${year}&month=${month}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate monthly summary');
+      }
+
+      // Download PDF
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `monthly-summary-${year}-${String(month).padStart(2, '0')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setSuccess('Successfully downloaded monthly summary PDF');
+
+    } catch (e) {
+      setError(e.message || 'Failed to generate monthly summary');
     } finally {
       setLoading(false);
     }
@@ -129,14 +209,14 @@ export default function ExportData() {
       <div className="export-header">
         <div>
           <h2 className="export-title">Export Data</h2>
-          <p className="export-subtitle">Download receipts in CSV or JSON format</p>
+          <p className="export-subtitle">Download receipts and summaries</p>
         </div>
-        
       </div>
 
+      {/* CSV Export Section */}
       <div className="export-card">
         <div className="export-section">
-          <h3 className="export-section-title">Export Filters</h3>
+          <h3 className="export-section-title">Export Receipts (CSV)</h3>
           <p className="export-section-desc">
             Select filters to export specific receipts or leave blank to export all
           </p>
@@ -175,18 +255,6 @@ export default function ExportData() {
                 onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
               />
             </div>
-
-            <div className="export-field">
-              <label className="export-label">Export Format</label>
-              <select
-                className="export-select"
-                value={filters.format}
-                onChange={(e) => setFilters({ ...filters, format: e.target.value })}
-              >
-                <option value="csv">CSV (Comma-separated values)</option>
-                <option value="json">JSON (JavaScript Object Notation)</option>
-              </select>
-            </div>
           </div>
         </div>
 
@@ -205,17 +273,44 @@ export default function ExportData() {
         <div className="export-actions">
           <button
             className="export-btn"
-            onClick={handleExport}
+            onClick={handleExportCSV}
             disabled={loading}
           >
-            {loading ? '⏳ Exporting...' : '📥 Export Data'}
+            {loading ? '⏳ Exporting...' : '📥 Export to CSV'}
           </button>
           <button
             className="export-btn export-btn--secondary"
-            onClick={() => setFilters({ status: '', dateFrom: '', dateTo: '', format: 'csv' })}
+            onClick={() => setFilters({ status: '', dateFrom: '', dateTo: '' })}
           >
             🔄 Reset Filters
           </button>
+        </div>
+      </div>
+
+      {/* PDF Summary Export Section */}
+      <div className="export-card" style={{ marginTop: '24px' }}>
+        <div className="export-section">
+          <h3 className="export-section-title">Export Summary Reports (PDF)</h3>
+          <p className="export-section-desc">
+            Download professional summary reports for today or current month
+          </p>
+
+          <div className="export-actions" style={{ marginTop: '20px' }}>
+            <button
+              className="export-btn export-btn--pdf"
+              onClick={handleDailySummaryPDF}
+              disabled={loading}
+            >
+              {loading ? '⏳ Generating...' : '📊 Daily Summary (PDF)'}
+            </button>
+            <button
+              className="export-btn export-btn--pdf"
+              onClick={handleMonthlySummaryPDF}
+              disabled={loading}
+            >
+              {loading ? '⏳ Generating...' : '📈 Monthly Summary (PDF)'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -224,19 +319,19 @@ export default function ExportData() {
         <div className="export-info-card">
           <div className="export-info-icon">📄</div>
           <div className="export-info-content">
-            <h4 className="export-info-title">CSV Format</h4>
+            <h4 className="export-info-title">CSV Export</h4>
             <p className="export-info-text">
-              Best for Excel and spreadsheet applications. Includes all receipt data in comma-separated format.
+              Best for Excel and spreadsheet applications. Includes all receipt data in comma-separated format with customizable filters.
             </p>
           </div>
         </div>
 
         <div className="export-info-card">
-          <div className="export-info-icon">🔧</div>
+          <div className="export-info-icon">📊</div>
           <div className="export-info-content">
-            <h4 className="export-info-title">JSON Format</h4>
+            <h4 className="export-info-title">PDF Summaries</h4>
             <p className="export-info-text">
-              Best for developers and API integrations. Provides structured data with all nested information.
+              Professional one-page summary reports with statistics, breakdowns, and receipt details. Perfect for daily/monthly reporting.
             </p>
           </div>
         </div>
@@ -249,6 +344,7 @@ export default function ExportData() {
               <li>Agency information</li>
               <li>Payment amounts and status</li>
               <li>Station and user details</li>
+              <li>Summary statistics (PDF)</li>
             </ul>
           </div>
         </div>

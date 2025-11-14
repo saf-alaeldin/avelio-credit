@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { generateSummaryPDF } = require('../utils/summaryPdfGenerator');
 
 // Export receipts to CSV
 const exportToCSV = async (req, res) => {
@@ -206,7 +207,162 @@ exports.getReceipts = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+// Export daily summary as PDF
+const exportDailySummaryPDF = async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    // Default to today if no date provided
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    // Fetch receipts for the specified date
+    const query = `
+      SELECT
+        r.id,
+        r.receipt_number,
+        r.issue_date,
+        r.amount,
+        r.currency,
+        r.status,
+        a.agency_name,
+        a.agency_id
+      FROM receipts r
+      LEFT JOIN agencies a ON r.agency_id = a.id
+      WHERE r.issue_date = $1 AND r.is_void = false
+      ORDER BY r.created_at DESC
+    `;
+
+    const result = await db.query(query, [targetDate]);
+    const receipts = result.rows;
+
+    if (receipts.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No receipts found for ${targetDate}`
+      });
+    }
+
+    // Calculate summary statistics
+    const summary = {
+      totalReceipts: receipts.length,
+      totalAmount: receipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0),
+      paidCount: receipts.filter(r => r.status === 'PAID').length,
+      paidAmount: receipts.filter(r => r.status === 'PAID').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0),
+      pendingCount: receipts.filter(r => r.status === 'PENDING').length,
+      pendingAmount: receipts.filter(r => r.status === 'PENDING').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0)
+    };
+
+    // Format period label
+    const dateObj = new Date(targetDate);
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${dateObj.getDate()} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+
+    // Generate PDF
+    const pdfBuffer = await generateSummaryPDF({
+      receipts,
+      summary,
+      period: 'daily',
+      periodLabel
+    });
+
+    // Send PDF
+    const filename = `daily-summary-${targetDate}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('Daily summary PDF export error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate daily summary PDF.'
+    });
+  }
+};
+
+// Export monthly summary as PDF
+const exportMonthlySummaryPDF = async (req, res) => {
+  try {
+    const { year, month } = req.query;
+
+    // Default to current month if not provided
+    const now = new Date();
+    const targetYear = year || now.getFullYear();
+    const targetMonth = month || (now.getMonth() + 1);
+
+    // Calculate date range for the month
+    const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+    const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
+
+    // Fetch receipts for the specified month
+    const query = `
+      SELECT
+        r.id,
+        r.receipt_number,
+        r.issue_date,
+        r.amount,
+        r.currency,
+        r.status,
+        a.agency_name,
+        a.agency_id
+      FROM receipts r
+      LEFT JOIN agencies a ON r.agency_id = a.id
+      WHERE r.issue_date >= $1 AND r.issue_date <= $2 AND r.is_void = false
+      ORDER BY r.issue_date DESC, r.created_at DESC
+    `;
+
+    const result = await db.query(query, [startDate, endDate]);
+    const receipts = result.rows;
+
+    if (receipts.length === 0) {
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      return res.status(404).json({
+        success: false,
+        message: `No receipts found for ${months[targetMonth - 1]} ${targetYear}`
+      });
+    }
+
+    // Calculate summary statistics
+    const summary = {
+      totalReceipts: receipts.length,
+      totalAmount: receipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0),
+      paidCount: receipts.filter(r => r.status === 'PAID').length,
+      paidAmount: receipts.filter(r => r.status === 'PAID').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0),
+      pendingCount: receipts.filter(r => r.status === 'PENDING').length,
+      pendingAmount: receipts.filter(r => r.status === 'PENDING').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0)
+    };
+
+    // Format period label
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${months[targetMonth - 1]} ${targetYear}`;
+
+    // Generate PDF
+    const pdfBuffer = await generateSummaryPDF({
+      receipts,
+      summary,
+      period: 'monthly',
+      periodLabel
+    });
+
+    // Send PDF
+    const filename = `monthly-summary-${targetYear}-${String(targetMonth).padStart(2, '0')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('Monthly summary PDF export error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate monthly summary PDF.'
+    });
+  }
+};
+
 module.exports = {
   exportToCSV,
-  exportSummaryCSV
+  exportSummaryCSV,
+  exportDailySummaryPDF,
+  exportMonthlySummaryPDF
 };

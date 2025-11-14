@@ -27,6 +27,10 @@
 .export-page .export-btn:disabled { opacity: .7; cursor: not-allowed; }
 .export-page .export-btn--ghost { background:#fff; color:#1e293b; border:1px solid #e2e8f0; box-shadow:none; }
 .export-page .export-btn--secondary { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; box-shadow:none; }
+.export-page .export-btn--pdf {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  box-shadow: 0 6px 16px rgba(16,185,129,.25);
+}
 
 /* Cards */
 .export-page .export-card {
