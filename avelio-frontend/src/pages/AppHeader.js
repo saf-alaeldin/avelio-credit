@@ -55,6 +55,9 @@ export default function AppHeader() {
           <NavLink to="/agencies"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Agencies</NavLink>
           <NavLink to="/export"     className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Export</NavLink>
           <NavLink to="/analytics"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
+          {user.role === 'admin' && (
+            <NavLink to="/users" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Users</NavLink>
+          )}
         </nav>
 
         {/* User menu */}

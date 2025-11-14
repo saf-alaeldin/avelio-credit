@@ -14,6 +14,7 @@ import Receipts from './pages/Receipts';
 import TravelAgencies from './pages/TravelAgencies';
 import ExportData from './pages/ExportData';
 import Analytics from './pages/Analytics';
+import Users from './pages/Users';
 import AppHeader from './pages/AppHeader';      
 
 function App() {
@@ -126,6 +127,10 @@ function App() {
             <Route
               path="/analytics"
               element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/users"
+              element={isAuthenticated ? <Users /> : <Navigate to="/login" replace />}
             />
             <Route
               path="*"
