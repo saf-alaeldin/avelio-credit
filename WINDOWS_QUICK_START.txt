@@ -1,0 +1,161 @@
+═══════════════════════════════════════════════════════════════════
+  KUSH AIR CREDIT SYSTEM - WINDOWS QUICK START GUIDE
+═══════════════════════════════════════════════════════════════════
+
+📋 REQUIREMENTS
+───────────────────────────────────────────────────────────────────
+1. Windows 10 or 11
+2. Node.js (https://nodejs.org/)
+3. PostgreSQL (https://www.postgresql.org/download/windows/)
+4. Administrator access
+
+🚀 INSTALLATION (5 STEPS)
+───────────────────────────────────────────────────────────────────
+
+Step 1: Download/Clone Project
+   → Extract to: C:\avelio-credit
+
+Step 2: Run Setup
+   → Right-click setup-windows.bat
+   → Select "Run as administrator"
+   → Wait for completion
+
+Step 3: Edit Configuration
+   → Open: C:\avelio-credit\avelio-backend\.env
+   → Change: DB_PASSWORD=YOUR_POSTGRES_PASSWORD_HERE
+   → Save file
+
+Step 4: Create Database
+   Method A (pgAdmin):
+     → Open pgAdmin 4
+     → Right-click "Databases" → Create → Database
+     → Name: avelio_db
+
+   Method B (Command):
+     psql -U postgres -c "CREATE DATABASE avelio_db;"
+
+Step 5: Initialize Database
+   cd C:\avelio-credit\avelio-backend
+   psql -U postgres -d avelio_db -f schema.sql
+   node setup-kushair-production.js
+
+🎯 STARTING THE SYSTEM
+───────────────────────────────────────────────────────────────────
+Double-click: start-network.bat
+
+Two windows will open (Backend & Frontend)
+Wait for "Server running" message in both windows
+
+🌐 ACCESS
+───────────────────────────────────────────────────────────────────
+From Windows PC:
+   http://localhost:3000
+
+From Other Devices (phones, tablets, other PCs):
+   1. Connect to same WiFi network
+   2. Go to: http://YOUR_WINDOWS_IP:3000
+      (IP shown when you start servers)
+
+🔑 LOGIN CREDENTIALS
+───────────────────────────────────────────────────────────────────
+Admin:
+   Username: mohamed.saeed
+   Password: KushAir@2025
+
+Staff (Simple):
+   Username: asami
+   Password: asami
+
+Staff:
+   Username: sarah.lado
+   Password: KushAir@2025
+
+🛑 STOPPING SERVERS
+───────────────────────────────────────────────────────────────────
+Option 1: Double-click stop-servers.bat
+Option 2: Close both server windows
+Option 3: Press Ctrl+C in each window
+
+🔥 FIREWALL (if needed)
+───────────────────────────────────────────────────────────────────
+Open Command Prompt as Administrator and run:
+
+netsh advfirewall firewall add rule name="Kush Air Frontend" dir=in action=allow protocol=TCP localport=3000
+netsh advfirewall firewall add rule name="Kush Air Backend" dir=in action=allow protocol=TCP localport=5001
+
+🐛 TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────
+
+Cannot connect to database:
+   → Check PostgreSQL is running (Services → postgresql-x64-16)
+   → Verify password in .env file
+   → Test: psql -U postgres -d avelio_db
+
+Port already in use:
+   → Run: stop-servers.bat
+   → Or: taskkill /F /IM node.exe
+
+Cannot access from other devices:
+   ✓ Same WiFi network?
+   ✓ Firewall rules added?
+   ✓ Using correct IP?
+   ✓ Servers running?
+
+Slow performance:
+   → Optimize database: psql -U postgres -d avelio_db -c "VACUUM ANALYZE;"
+   → Close other applications
+   → Restart servers
+
+📁 IMPORTANT FILES
+───────────────────────────────────────────────────────────────────
+setup-windows.bat           # Run this first (as Admin)
+start-network.bat           # Start servers
+stop-servers.bat            # Stop servers
+WINDOWS_DEPLOYMENT.md       # Detailed documentation
+avelio-backend\.env         # Edit PostgreSQL password here!
+
+📞 USEFUL COMMANDS
+───────────────────────────────────────────────────────────────────
+Get IP address:
+   ipconfig
+
+Check if servers running:
+   tasklist | findstr node
+
+Check ports:
+   netstat -an | findstr :3000
+   netstat -an | findstr :5001
+
+Connect to database:
+   psql -U postgres -d avelio_db
+
+Backup database:
+   pg_dump -U postgres -d avelio_db > backup.sql
+
+Restore database:
+   psql -U postgres -d avelio_db < backup.sql
+
+🔄 UPDATING
+───────────────────────────────────────────────────────────────────
+1. Download new version
+2. Replace files (keep .env files)
+3. Run: npm run install:all
+4. Restart: start-network.bat
+
+📊 MONITORING
+───────────────────────────────────────────────────────────────────
+Server logs: Check the two terminal windows
+Database size: pgAdmin 4 → avelio_db → Properties
+Active users: Check receipts created_at timestamps
+
+🔐 SECURITY TIPS
+───────────────────────────────────────────────────────────────────
+✓ Change default passwords after first login
+✓ Regular database backups (weekly)
+✓ Keep Node.js and PostgreSQL updated
+✓ Only allow trusted devices on network
+✓ Use strong JWT_SECRET in .env
+
+═══════════════════════════════════════════════════════════════════
+For detailed help, see WINDOWS_DEPLOYMENT.md
+═══════════════════════════════════════════════════════════════════
