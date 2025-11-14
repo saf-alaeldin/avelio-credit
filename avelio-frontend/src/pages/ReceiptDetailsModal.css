@@ -296,6 +296,98 @@
   box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
 }
 
+.modal-btn-danger {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  color: white;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+}
+
+.modal-btn-danger:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+}
+
+/* Void Confirmation Styles */
+.modal-container-small {
+  max-width: 550px;
+}
+
+.void-warning {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border: 1.5px solid #FCD34D;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.void-warning-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.void-warning p {
+  margin: 0;
+  font-size: 14px;
+  color: #78350F;
+  line-height: 1.6;
+}
+
+.void-warning strong {
+  color: #92400E;
+  font-weight: 700;
+}
+
+.void-receipt-info {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.void-receipt-info p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.void-receipt-info strong {
+  color: #1E293B;
+  font-weight: 600;
+}
+
+.void-reason-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #1A202C;
+  background: #F8FAFC;
+  resize: vertical;
+  transition: all 0.2s ease;
+}
+
+.void-reason-input:focus {
+  outline: none;
+  background: white;
+  border-color: #EF4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.void-reason-input::placeholder {
+  color: #94A3B8;
+}
+
+.void-reason-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .modal-backdrop {

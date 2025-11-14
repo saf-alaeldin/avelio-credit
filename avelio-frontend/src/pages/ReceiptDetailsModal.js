@@ -8,6 +8,9 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showVoidConfirm, setShowVoidConfirm] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
+  const [isVoiding, setIsVoiding] = useState(false);
 
   if (!isOpen || !receipt) return null;
 
@@ -79,6 +82,55 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       window.open(url, '_blank');
     } catch (err) {
       setError('Error downloading PDF: ' + err.message);
+    }
+  };
+
+  // Handle Void Receipt
+  const handleVoidReceipt = async () => {
+    if (!voidReason.trim()) {
+      setError('Please provide a reason for voiding this receipt');
+      return;
+    }
+
+    try {
+      setIsVoiding(true);
+      setError('');
+
+      const res = await fetch(`${API_BASE}/receipts/${receipt.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason: voidReason }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to void receipt');
+      }
+
+      // Show success message
+      setSuccess(true);
+      setShowVoidConfirm(false);
+      setIsVoiding(false);
+
+      // Wait 1.5 seconds to show success, then close
+      setTimeout(() => {
+        if (onStatusUpdated) {
+          onStatusUpdated(receipt.id);
+        }
+        onClose();
+        // Reset states after closing
+        setTimeout(() => {
+          setSuccess(false);
+          setVoidReason('');
+        }, 300);
+      }, 1500);
+
+    } catch (err) {
+      setError(err.message || 'Failed to void receipt');
+      setIsVoiding(false);
     }
   };
 
@@ -216,29 +268,136 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
                 </span>
               </div>
             )}
+
+            {/* Void Information (if voided) */}
+            {receipt.is_void && (
+              <div className="modal-detail-item modal-detail-full">
+                <div className="void-warning">
+                  <span className="void-warning-icon">🗑️</span>
+                  <div>
+                    <p><strong>This receipt has been voided</strong></p>
+                    {receipt.void_reason && (
+                      <p style={{marginTop: '8px'}}>
+                        <strong>Reason:</strong> {receipt.void_reason}
+                      </p>
+                    )}
+                    {receipt.void_date && (
+                      <p style={{marginTop: '4px', fontSize: '12px', color: '#64748B'}}>
+                        Voided on: {formatDateTime(receipt.void_date)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Footer */}
         <div className="modal-footer">
-          <button 
+          <button
             className="modal-btn modal-btn-secondary"
             onClick={handleDownloadPDF}
           >
             📄 Download PDF
           </button>
 
-          {canMarkAsPaid && (
-            <button 
+          {/* Show Void button if receipt is not already voided */}
+          {!receipt.is_void && (
+            <button
+              className="modal-btn modal-btn-danger"
+              onClick={() => setShowVoidConfirm(true)}
+              disabled={isUpdating || success || isVoiding}
+            >
+              🗑️ Void Receipt
+            </button>
+          )}
+
+          {canMarkAsPaid && !receipt.is_void && (
+            <button
               className={`modal-btn modal-btn-primary ${success ? 'success-state' : ''}`}
               onClick={handleMarkAsPaid}
-              disabled={isUpdating || success}
+              disabled={isUpdating || success || isVoiding}
             >
               {success ? '✓ Marked as Paid!' : isUpdating ? 'Updating...' : '✓ Mark as Paid'}
             </button>
           )}
         </div>
       </div>
+
+      {/* Void Confirmation Dialog */}
+      {showVoidConfirm && (
+        <div className="modal-backdrop" onClick={() => !isVoiding && setShowVoidConfirm(false)}>
+          <div className="modal-container modal-container-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Void Receipt</h2>
+              <button
+                className="modal-close-btn"
+                onClick={() => setShowVoidConfirm(false)}
+                disabled={isVoiding}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="void-warning">
+                <span className="void-warning-icon">⚠️</span>
+                <p>
+                  <strong>Warning:</strong> Voiding this receipt cannot be undone.
+                  {receipt.status?.toUpperCase() === 'PENDING' && (
+                    <span> The outstanding balance will be reversed.</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="void-receipt-info">
+                <p><strong>Receipt:</strong> {receipt.receipt_number}</p>
+                <p><strong>Agency:</strong> {receipt.agency?.agency_name || receipt.agency_name}</p>
+                <p><strong>Amount:</strong> {Number(receipt.amount || 0).toFixed(2)} {receipt.currency || 'USD'}</p>
+              </div>
+
+              <div className="modal-detail-item modal-detail-full">
+                <label className="modal-detail-label">
+                  Reason for Voiding <span style={{color: '#EF4444'}}>*</span>
+                </label>
+                <textarea
+                  className="void-reason-input"
+                  placeholder="Enter reason (e.g., Duplicate entry, Incorrect amount, Customer request...)"
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  rows="3"
+                  disabled={isVoiding}
+                  autoFocus
+                />
+              </div>
+
+              {error && (
+                <div className="modal-error">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowVoidConfirm(false)}
+                disabled={isVoiding}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={handleVoidReceipt}
+                disabled={isVoiding || !voidReason.trim()}
+              >
+                {isVoiding ? 'Voiding...' : 'Confirm Void Receipt'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
