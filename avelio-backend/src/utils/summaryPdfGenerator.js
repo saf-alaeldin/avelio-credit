@@ -209,9 +209,9 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
 
       currentY += 20;
 
-      // Table Header
-      const tableStartY = currentY;
+      // Table configuration
       const rowHeight = 24;
+      const footerHeight = 80; // Space needed for footer
 
       // Column widths and positions
       const col1W = 90;   // Receipt #
@@ -226,25 +226,87 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
       const col4X = col3X + col3W;
       const col5X = col4X + col4W;
 
-      // Header background
-      doc.rect(doc.page.margins.left, currentY, pageWidth, rowHeight)
-         .fill(PRIMARY);
+      // Helper function to draw table header
+      const drawTableHeader = (yPos) => {
+        doc.rect(doc.page.margins.left, yPos, pageWidth, rowHeight)
+           .fill(PRIMARY);
 
-      // Header text
-      doc.font('UI-Bold').fontSize(9).fillColor('#FFFFFF');
-      doc.text('Receipt #', col1X + 8, currentY + 8, { width: col1W - 16 });
-      doc.text('Date', col2X + 4, currentY + 8, { width: col2W - 8 });
-      doc.text('Agency', col3X + 4, currentY + 8, { width: col3W - 8 });
-      doc.text('Amount', col4X + 4, currentY + 8, { width: col4W - 8 });
-      doc.text('Status', col5X + 4, currentY + 8, { width: col5W - 8 });
+        doc.font('UI-Bold').fontSize(9).fillColor('#FFFFFF');
+        doc.text('Receipt #', col1X + 8, yPos + 8, { width: col1W - 16 });
+        doc.text('Date', col2X + 4, yPos + 8, { width: col2W - 8 });
+        doc.text('Agency', col3X + 4, yPos + 8, { width: col3W - 8 });
+        doc.text('Amount', col4X + 4, yPos + 8, { width: col4W - 8 });
+        doc.text('Status', col5X + 4, yPos + 8, { width: col5W - 8 });
 
-      currentY += rowHeight;
+        return yPos + rowHeight;
+      };
 
-      // Table rows (limit to fit on one page)
-      const maxRows = 20; // Adjust based on page space
-      const displayReceipts = receipts.slice(0, maxRows);
+      // Helper function to draw footer
+      const drawFooter = () => {
+        const footerY = doc.page.height - doc.page.margins.bottom - 40;
 
-      displayReceipts.forEach((receipt, index) => {
+        doc.moveTo(doc.page.margins.left, footerY)
+           .lineTo(doc.page.width - doc.page.margins.right, footerY)
+           .strokeColor(BORDER)
+           .lineWidth(0.5)
+           .stroke();
+
+        doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
+           .text(`Generated on ${formatDate(new Date())} at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+                 doc.page.margins.left, footerY + 10,
+                 { width: pageWidth, align: 'center' });
+
+        doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
+           .text('Amin Mohamed Building, Opposite KCB, Juba Town | finance@kushair.net | +211929754555',
+                 doc.page.margins.left, footerY + 24,
+                 { width: pageWidth, align: 'center' });
+      };
+
+      // Helper function to add new page with minimal header
+      const addContinuationPage = () => {
+        doc.addPage();
+
+        // Decorative top border
+        doc.rect(0, 0, doc.page.width, 4).fill(PRIMARY);
+
+        // Minimal header
+        const minimalHeaderY = doc.page.margins.top + 10;
+        doc.fillColor(TEXT).font('UI-Bold').fontSize(16)
+           .text(companyName, doc.page.margins.left, minimalHeaderY);
+        doc.font('UI-Regular').fontSize(10).fillColor(MUTED)
+           .text(`${period === 'daily' ? 'Daily' : 'Monthly'} Receipts Summary (continued)`,
+                 doc.page.width - doc.page.margins.right - 200, minimalHeaderY,
+                 { width: 200, align: 'right' });
+
+        const newY = minimalHeaderY + 30;
+
+        // Divider
+        doc.moveTo(doc.page.margins.left, newY)
+           .lineTo(doc.page.width - doc.page.margins.right, newY)
+           .strokeColor(BORDER)
+           .lineWidth(0.5)
+           .stroke();
+
+        return newY + 16;
+      };
+
+      // Draw initial table header
+      currentY = drawTableHeader(currentY);
+
+      // Render table rows with pagination
+      receipts.forEach((receipt, index) => {
+        // Check if we need a new page (considering footer space)
+        if (currentY + rowHeight + footerHeight > doc.page.height - doc.page.margins.bottom) {
+          // Draw footer on current page
+          drawFooter();
+
+          // Start new page with minimal header
+          currentY = addContinuationPage();
+
+          // Draw table header on new page
+          currentY = drawTableHeader(currentY);
+        }
+
         // Alternate row colors
         const bgColor = index % 2 === 0 ? CARD : LIGHT_BG;
         doc.rect(doc.page.margins.left, currentY, pageWidth, rowHeight)
@@ -253,7 +315,7 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
         // Row data
         doc.font('UI-Regular').fontSize(8).fillColor(TEXT);
 
-        // Receipt number (truncate if needed)
+        // Receipt number
         const receiptNum = receipt.receipt_number || '—';
         doc.text(receiptNum.substring(0, 18), col1X + 8, currentY + 8, { width: col1W - 16 });
 
@@ -261,7 +323,7 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
         const dateStr = receipt.issue_date ? formatDate(receipt.issue_date) : '—';
         doc.text(dateStr, col2X + 4, currentY + 8, { width: col2W - 8 });
 
-        // Agency (truncate if needed)
+        // Agency
         const agencyName = receipt.agency_name || receipt.agency?.agency_name || '—';
         doc.text(agencyName.substring(0, 25), col3X + 4, currentY + 8, { width: col3W - 8 });
 
@@ -277,43 +339,10 @@ async function generateSummaryPDF({ receipts = [], summary = {}, period = 'daily
         doc.text(status, col5X + 4, currentY + 8, { width: col5W - 8 });
 
         currentY += rowHeight;
-
-        // Check if we're running out of space
-        if (currentY > doc.page.height - 120) {
-          return; // Stop adding rows
-        }
       });
 
-      // If more receipts than displayed
-      if (receipts.length > maxRows) {
-        currentY += 8;
-        doc.font('UI-Regular').fontSize(9).fillColor(MUTED)
-           .text(`Showing ${maxRows} of ${receipts.length} receipts`,
-                 doc.page.margins.left, currentY,
-                 { width: pageWidth, align: 'center' });
-        currentY += 16;
-      } else {
-        currentY += 16;
-      }
-
-      // Footer
-      const footerY = doc.page.height - doc.page.margins.bottom - 40;
-
-      doc.moveTo(doc.page.margins.left, footerY)
-         .lineTo(doc.page.width - doc.page.margins.right, footerY)
-         .strokeColor(BORDER)
-         .lineWidth(0.5)
-         .stroke();
-
-      doc.font('UI-Regular').fontSize(8).fillColor(MUTED)
-         .text(`Generated on ${formatDate(new Date())} at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-               doc.page.margins.left, footerY + 10,
-               { width: pageWidth, align: 'center' });
-
-      doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
-         .text('Amin Mohamed Building, Opposite KCB, Juba Town | finance@kushair.net | +211929754555',
-               doc.page.margins.left, footerY + 24,
-               { width: pageWidth, align: 'center' });
+      // Draw footer on the last page
+      drawFooter();
 
       doc.end();
 
