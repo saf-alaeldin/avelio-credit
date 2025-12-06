@@ -2,7 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import './ReceiptDetailsModal.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Auto-detect API URL based on window location
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatusUpdated }) {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -23,11 +33,15 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
 
   if (!isOpen || !receipt) return null;
 
+  // Local receipt state to track payment updates
+  const [localReceipt, setLocalReceipt] = useState(null);
+
   const token =
     localStorage.getItem('token') ||
     localStorage.getItem('authToken') ||
     sessionStorage.getItem('token');
 
+<<<<<<< Updated upstream
   // Fetch payment history when modal opens
   useEffect(() => {
     if (isOpen && receipt?.id) {
@@ -35,11 +49,13 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   }, [isOpen, receipt?.id]);
 
+=======
+>>>>>>> Stashed changes
   // Fetch payment history
   const fetchPayments = async () => {
     try {
       setLoadingPayments(true);
-      const res = await fetch(`${API_BASE}/payments/receipt/${receipt.id}`, {
+      const res = await fetch(`${API_BASE}/payments/receipt/${localReceipt.id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
@@ -54,25 +70,42 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   };
 
-  // Calculate amounts
-  const totalAmount = parseFloat(receipt.amount || 0);
-  const amountPaid = parseFloat(receipt.amount_paid || 0);
+  // Update local receipt when prop changes
+  useEffect(() => {
+    if (receipt) {
+      setLocalReceipt(receipt);
+    }
+  }, [receipt]);
+
+  // Fetch payment history when modal opens
+  useEffect(() => {
+    if (isOpen && localReceipt?.id) {
+      fetchPayments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, localReceipt?.id]);
+
+  if (!isOpen || !receipt || !localReceipt) return null;
+
+  // Calculate amounts from local receipt state
+  const totalAmount = parseFloat(localReceipt.amount || 0);
+  const amountPaid = parseFloat(localReceipt.amount_paid || 0);
   const amountRemaining = totalAmount - amountPaid;
   const hasPartialPayments = payments.length > 0;
 
   // Check if receipt is overdue
   const isOverdue = () => {
-    if (receipt.status?.toUpperCase() !== 'PENDING') return false;
-    const issueDate = new Date(receipt.issue_date);
+    if (localReceipt.status?.toUpperCase() !== 'PENDING') return false;
+    const issueDate = new Date(localReceipt.issue_date);
     const daysDiff = Math.floor((Date.now() - issueDate) / (1000 * 60 * 60 * 24));
     return daysDiff > 3;
   };
 
   // Check if "Mark as Paid" button should be shown
-  const canMarkAsPaid = (receipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
+  const canMarkAsPaid = (localReceipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
 
   // Check if partial payment is allowed
-  const canMakePartialPayment = (receipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
+  const canMakePartialPayment = (localReceipt.status?.toUpperCase() === 'PENDING' || isOverdue()) && amountRemaining > 0;
 
   // Handle Mark as Paid (full payment)
   const handleMarkAsPaid = async () => {
@@ -80,7 +113,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       setIsUpdating(true);
       setError('');
 
-      const res = await fetch(`${API_BASE}/receipts/${receipt.id}`, {
+      const res = await fetch(`${API_BASE}/receipts/${localReceipt.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -101,7 +134,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       // Wait 1.5 seconds to show success, then close
       setTimeout(() => {
         if (onStatusUpdated) {
-          onStatusUpdated(receipt.id);
+          onStatusUpdated(localReceipt.id);
         }
         onClose();
         // Reset success state after closing
@@ -139,7 +172,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          receipt_id: receipt.id,
+          receipt_id: localReceipt.id,
           amount: amount,
           payment_method: partialPaymentMethod,
           remarks: partialRemarks
@@ -152,6 +185,18 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
         throw new Error(data.message || 'Failed to process payment');
       }
 
+<<<<<<< Updated upstream
+=======
+      // Update local receipt state with new amounts (create new object to trigger re-render)
+      const updatedReceipt = {
+        ...localReceipt,
+        amount_paid: data.data.receipt.amount_paid,
+        amount_remaining: data.data.receipt.amount_remaining,
+        status: data.data.receipt.status
+      };
+      setLocalReceipt(updatedReceipt);
+
+>>>>>>> Stashed changes
       // Show success
       setSuccess(true);
       setIsProcessingPayment(false);
@@ -185,7 +230,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   // Handle PDF Download
   const handleDownloadPDF = async () => {
     try {
-      const res = await fetch(`${API_BASE}/receipts/${receipt.id}/pdf`, {
+      const res = await fetch(`${API_BASE}/receipts/${localReceipt.id}/pdf`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error('Failed to fetch PDF');
@@ -197,6 +242,82 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   };
 
+<<<<<<< Updated upstream
+=======
+  // Handle Payment PDF Download
+  const handleDownloadPaymentPDF = async (paymentId) => {
+    try {
+      const res = await fetch(`${API_BASE}/payments/${paymentId}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to fetch payment PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (err) {
+      setError('Error downloading payment PDF: ' + err.message);
+    }
+  };
+
+  // Handle Void Payment
+  const handleVoidPayment = async () => {
+    if (!voidPaymentReason.trim()) {
+      setError('Please provide a reason for voiding this payment');
+      return;
+    }
+
+    try {
+      setIsVoidingPayment(true);
+      setError('');
+
+      const res = await fetch(`${API_BASE}/payments/${voidPaymentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason: voidPaymentReason }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to void payment');
+      }
+
+      // Update local receipt state with new amounts (create new object to trigger re-render)
+      const updatedReceipt = {
+        ...localReceipt,
+        amount_paid: data.data.receipt.amount_paid,
+        amount_remaining: data.data.receipt.amount_remaining,
+        status: data.data.receipt.status
+      };
+      setLocalReceipt(updatedReceipt);
+
+      // Show success
+      setSuccess(true);
+      setShowVoidPayment(false);
+      setIsVoidingPayment(false);
+      setVoidPaymentReason('');
+      setVoidPaymentId(null);
+
+      // Refresh payments
+      await fetchPayments();
+
+      // Notify parent to refresh
+      if (onStatusUpdated) {
+        onStatusUpdated(receipt.id);
+      }
+
+      setTimeout(() => setSuccess(false), 1500);
+
+    } catch (err) {
+      setError(err.message || 'Failed to void payment');
+      setIsVoidingPayment(false);
+    }
+  };
+
+>>>>>>> Stashed changes
   // Handle Void Receipt
   const handleVoidReceipt = async () => {
     if (!voidReason.trim()) {
@@ -208,7 +329,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       setIsVoiding(true);
       setError('');
 
-      const res = await fetch(`${API_BASE}/receipts/${receipt.id}`, {
+      const res = await fetch(`${API_BASE}/receipts/${localReceipt.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +351,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       // Wait 1.5 seconds to show success, then close
       setTimeout(() => {
         if (onStatusUpdated) {
-          onStatusUpdated(receipt.id);
+          onStatusUpdated(localReceipt.id);
         }
         onClose();
         // Reset states after closing
@@ -323,7 +444,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
             <div className="modal-detail-item">
               <span className="modal-detail-label">Receipt Number</span>
               <span className="modal-detail-value receipt-number-mono">
-                {receipt.receipt_number}
+                {localReceipt.receipt_number}
               </span>
             </div>
 
@@ -331,7 +452,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
             <div className="modal-detail-item">
               <span className="modal-detail-label">Travel Agency</span>
               <span className="modal-detail-value">
-                {receipt.agency?.agency_name || receipt.agency_name || 'N/A'}
+                {localReceipt.agency?.agency_name || localReceipt.agency_name || 'N/A'}
               </span>
             </div>
 
@@ -339,7 +460,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
             <div className="modal-detail-item">
               <span className="modal-detail-label">Total Amount</span>
               <span className="modal-detail-value modal-amount">
-                {totalAmount.toFixed(2)} {receipt.currency || 'USD'}
+                {totalAmount.toFixed(2)} {localReceipt.currency || 'USD'}
               </span>
             </div>
 
@@ -348,10 +469,10 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
               <span className="modal-detail-label">Status</span>
               <span
                 className={`modal-status-badge ${
-                  receipt.status?.toLowerCase() === 'paid' ? 'paid' : 'pending'
+                  localReceipt.status?.toLowerCase() === 'paid' ? 'paid' : 'pending'
                 }`}
               >
-                {receipt.status?.toUpperCase() || 'N/A'}
+                {localReceipt.status?.toUpperCase() || 'N/A'}
                 {isOverdue() && ' (OVERDUE)'}
               </span>
             </div>
@@ -360,65 +481,65 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
             <div className="modal-detail-item">
               <span className="modal-detail-label">Issue Date & Time</span>
               <span className="modal-detail-value">
-                {formatDateTime(receipt.issue_date, receipt.issue_time)}
+                {formatDateTime(localReceipt.issue_date, localReceipt.issue_time)}
               </span>
             </div>
 
             {/* Payment Method */}
-            {receipt.payment_method && (
+            {localReceipt.payment_method && (
               <div className="modal-detail-item">
                 <span className="modal-detail-label">Payment Method</span>
                 <span className="modal-detail-value">
-                  {receipt.payment_method}
+                  {localReceipt.payment_method}
                 </span>
               </div>
             )}
 
             {/* Passenger Name */}
-            {receipt.passenger_name && (
+            {localReceipt.passenger_name && (
               <div className="modal-detail-item">
                 <span className="modal-detail-label">Passenger Name</span>
                 <span className="modal-detail-value">
-                  {receipt.passenger_name}
+                  {localReceipt.passenger_name}
                 </span>
               </div>
             )}
 
             {/* Route */}
-            {(receipt.departure || receipt.destination) && (
+            {(localReceipt.departure || localReceipt.destination) && (
               <div className="modal-detail-item modal-detail-full">
                 <span className="modal-detail-label">Route</span>
                 <span className="modal-detail-value">
-                  {receipt.departure || 'N/A'} → {receipt.destination || 'N/A'}
+                  {localReceipt.departure || 'N/A'} → {localReceipt.destination || 'N/A'}
                 </span>
               </div>
             )}
 
             {/* Notes */}
-            {receipt.notes && (
+            {localReceipt.notes && (
               <div className="modal-detail-item modal-detail-full">
                 <span className="modal-detail-label">Notes</span>
                 <span className="modal-detail-value modal-notes">
-                  {receipt.notes}
+                  {localReceipt.notes}
                 </span>
               </div>
             )}
 
             {/* Void Information (if voided) */}
-            {receipt.is_void && (
+            {localReceipt.is_void && (
               <div className="modal-detail-item modal-detail-full">
                 <div className="void-warning">
                   <span className="void-warning-icon">🗑️</span>
                   <div>
                     <p><strong>This receipt has been voided</strong></p>
-                    {receipt.void_reason && (
+                    {localReceipt.void_reason && (
                       <p style={{marginTop: '8px'}}>
-                        <strong>Reason:</strong> {receipt.void_reason}
+                        <strong>Reason:</strong> {localReceipt.void_reason}
                       </p>
                     )}
-                    {receipt.void_date && (
+                    {localReceipt.void_date && (
                       <p style={{marginTop: '4px', fontSize: '12px', color: '#64748B'}}>
-                        Voided on: {formatDateTime(receipt.void_date)}
+                        Voided on: {formatDateTime(localReceipt.void_date)}
                       </p>
                     )}
                   </div>
@@ -468,7 +589,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
           </button>
 
           {/* Show Partial Payment button */}
-          {canMakePartialPayment && !receipt.is_void && (
+          {canMakePartialPayment && !localReceipt.is_void && (
             <button
               className="modal-btn modal-btn-warning"
               onClick={() => setShowPartialPayment(true)}
@@ -479,7 +600,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
           )}
 
           {/* Show Void button if receipt is not already voided */}
-          {!receipt.is_void && (
+          {!localReceipt.is_void && (
             <button
               className="modal-btn modal-btn-danger"
               onClick={() => setShowVoidConfirm(true)}
@@ -489,7 +610,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
             </button>
           )}
 
-          {canMarkAsPaid && !receipt.is_void && (
+          {canMarkAsPaid && !localReceipt.is_void && (
             <button
               className={`modal-btn modal-btn-primary ${success ? 'success-state' : ''}`}
               onClick={handleMarkAsPaid}
@@ -518,7 +639,7 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
 
             <div className="modal-body">
               <div className="payment-info-box">
-                <p><strong>Receipt:</strong> {receipt.receipt_number}</p>
+                <p><strong>Receipt:</strong> {localReceipt.receipt_number}</p>
                 <p><strong>Total Amount:</strong> ${totalAmount.toFixed(2)}</p>
                 <p><strong>Already Paid:</strong> ${amountPaid.toFixed(2)}</p>
                 <p className="payment-remaining-highlight">
@@ -619,16 +740,16 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
                 <span className="void-warning-icon">⚠️</span>
                 <p>
                   <strong>Warning:</strong> Voiding this receipt cannot be undone.
-                  {receipt.status?.toUpperCase() === 'PENDING' && (
+                  {localReceipt.status?.toUpperCase() === 'PENDING' && (
                     <span> The outstanding balance will be reversed.</span>
                   )}
                 </p>
               </div>
 
               <div className="void-receipt-info">
-                <p><strong>Receipt:</strong> {receipt.receipt_number}</p>
-                <p><strong>Agency:</strong> {receipt.agency?.agency_name || receipt.agency_name}</p>
-                <p><strong>Amount:</strong> {totalAmount.toFixed(2)} {receipt.currency || 'USD'}</p>
+                <p><strong>Receipt:</strong> {localReceipt.receipt_number}</p>
+                <p><strong>Agency:</strong> {localReceipt.agency?.agency_name || localReceipt.agency_name}</p>
+                <p><strong>Amount:</strong> {totalAmount.toFixed(2)} {localReceipt.currency || 'USD'}</p>
               </div>
 
               <div className="modal-detail-item modal-detail-full">

@@ -236,9 +236,130 @@
   background:#F1F5F9; border:1px solid #E2E8F0; padding:2px 6px; border-radius: 6px; margin-left: 6px;
 }
 
+/* Agency Details Modal */
+.agencies-modal--large {
+  max-width: 1000px !important;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.agency-details-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.agency-stat {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.agency-stat-label {
+  font-size: 13px;
+  color: #64748B;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.agency-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1A202C;
+}
+
+.agency-stat-value--pending {
+  color: #F59E0B;
+}
+
+.agency-stat-value--success {
+  color: #10B981;
+}
+
+.agency-receipts-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid #E2E8F0;
+}
+
+.agency-receipts-table-wrapper {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.agency-receipts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.agency-receipts-table thead {
+  background: #F8FAFC;
+  border-bottom: 2px solid #E2E8F0;
+}
+
+.agency-receipts-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.agency-receipts-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #F1F5F9;
+  color: #334155;
+}
+
+.agency-receipts-table tbody tr {
+  transition: background 0.2s ease;
+}
+
+.agency-receipts-table tbody tr:hover {
+  background: #F8FAFC;
+}
+
+.receipt-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.receipt-status--paid {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.receipt-status--pending {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.receipt-status--void {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .agencies-page { padding: 24px 20px; }
   .agencies-header { flex-direction: column; gap: 12px; }
   .agencies-grid { grid-template-columns: 1fr; }
+  .agencies-modal--large { width: 98%; }
+  .agency-details-stats { grid-template-columns: 1fr 1fr; }
+  .agency-receipts-table { font-size: 12px; }
+  .agency-receipts-table th,
+  .agency-receipts-table td { padding: 10px 8px; }
 }

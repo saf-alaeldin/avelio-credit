@@ -13,7 +13,17 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler, LineController, BarController, DoughnutController
 );
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Auto-detect API URL based on window location
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 async function apiGet(path) {
   const token =
@@ -73,6 +83,8 @@ export default function Analytics() {
   const agenciesRef   = useRef(null);
   const countRef      = useRef(null);
   const stackedRef    = useRef(null); // paid vs pending counts (stacked)
+  const paymentMethodRef = useRef(null); // payment method breakdown
+  const agingRef = useRef(null); // pending aging analysis
 
   const chartsRef = useRef({});
 
@@ -85,7 +97,9 @@ export default function Analytics() {
 
         console.log('📊 Fetching analytics data...');
 
-        const res = await apiGet('/receipts');
+        // Fetch all receipts with a large pageSize for accurate analytics
+        // We need ALL receipts, not just paginated results
+        const res = await apiGet('/receipts?pageSize=10000');
         const receipts = res?.data?.receipts || res?.receipts || [];
 
         console.log('✅ Analytics data loaded:', receipts.length, 'receipts');
@@ -114,7 +128,13 @@ export default function Analytics() {
           byMonth: {},           // { 'YYYY-MM': { revenue, count } }
           byMonthStatus: {},     // { 'YYYY-MM': { PAID:count, PENDING:count, VOID:count } }
           topAgencies: {},       // { name: { count, revenue } }
-          growthRate: 0
+          growthRate: 0,
+          // New analytics data
+          byPaymentMethod: {},   // { method: { count, revenue } }
+          pendingAging: { '0-7': 0, '8-14': 0, '15-30': 0, '31-60': 0, '60+': 0 },
+          avgDaysToPayment: 0,
+          fastestPayers: {},     // { agency: avgDays }
+          slowestPayers: {}      // { agency: avgDays }
         };
 
         receipts.forEach(r => {
@@ -125,30 +145,81 @@ export default function Analytics() {
           const y = d.getFullYear();
           const key = `${y}-${String(m + 1).padStart(2,'0')}`;
 
-          a.totalRevenue += amount;
+          // Track all statuses for pie chart
           a.byStatus[status] = (a.byStatus[status] || 0) + amount;
 
-          if (status === 'PAID') { a.paidRevenue += amount; a.paidReceipts++; }
-          else if (status === 'PENDING') { a.pendingRevenue += amount; a.pendingReceipts++; }
-          else if (status === 'VOID') { a.voidRevenue += amount; a.voidReceipts++; }
+          // Count receipts by status
+          if (status === 'PAID') {
+            a.paidRevenue += amount;
+            a.paidReceipts++;
+            a.totalRevenue += amount; // Only add PAID to total revenue
+          }
+          else if (status === 'PENDING') {
+            a.pendingRevenue += amount;
+            a.pendingReceipts++;
+            a.totalRevenue += amount; // Only add PENDING to total revenue
+          }
+          else if (status === 'VOID') {
+            a.voidRevenue += amount;
+            a.voidReceipts++;
+            // DO NOT add VOID to total revenue
+          }
 
+          // Monthly data - only include non-void receipts in revenue
           if (!a.byMonth[key]) a.byMonth[key] = { revenue: 0, count: 0 };
-          a.byMonth[key].revenue += amount;
-          a.byMonth[key].count++;
+          if (status !== 'VOID') {
+            a.byMonth[key].revenue += amount;
+            a.byMonth[key].count++;
+          }
 
+          // Track status counts by month (for stacked chart)
           if (!a.byMonthStatus[key]) a.byMonthStatus[key] = { PAID: 0, PENDING: 0, VOID: 0 };
           a.byMonthStatus[key][status] = (a.byMonthStatus[key][status] || 0) + 1;
 
-          if (m === thisMonth && y === thisYear) { a.thisMonthRevenue += amount; a.thisMonthReceipts++; }
-          if (m === lastMonth && y === lastYear) { a.lastMonthRevenue += amount; a.lastMonthReceipts++; }
+          // This month and last month - only non-void
+          if (status !== 'VOID') {
+            if (m === thisMonth && y === thisYear) {
+              a.thisMonthRevenue += amount;
+              a.thisMonthReceipts++;
+            }
+            if (m === lastMonth && y === lastYear) {
+              a.lastMonthRevenue += amount;
+              a.lastMonthReceipts++;
+            }
+          }
 
-          const agency = r.agency?.agency_name || r.agency_name || 'Unknown';
-          if (!a.topAgencies[agency]) a.topAgencies[agency] = { count: 0, revenue: 0 };
-          a.topAgencies[agency].count++;
-          a.topAgencies[agency].revenue += amount;
+          // Top agencies - only non-void receipts
+          if (status !== 'VOID') {
+            const agency = r.agency?.agency_name || r.agency_name || 'Unknown';
+            if (!a.topAgencies[agency]) a.topAgencies[agency] = { count: 0, revenue: 0 };
+            a.topAgencies[agency].count++;
+            a.topAgencies[agency].revenue += amount;
+          }
+
+          // Payment method analysis - only non-void
+          if (status !== 'VOID') {
+            const method = r.payment_method || 'Not Specified';
+            if (!a.byPaymentMethod[method]) a.byPaymentMethod[method] = { count: 0, revenue: 0 };
+            a.byPaymentMethod[method].count++;
+            a.byPaymentMethod[method].revenue += amount;
+          }
+
+          // Aging analysis for PENDING receipts
+          if (status === 'PENDING') {
+            const issueDate = new Date(r.issue_date);
+            const daysPending = Math.floor((now - issueDate) / (1000 * 60 * 60 * 24));
+
+            if (daysPending <= 7) a.pendingAging['0-7']++;
+            else if (daysPending <= 14) a.pendingAging['8-14']++;
+            else if (daysPending <= 30) a.pendingAging['15-30']++;
+            else if (daysPending <= 60) a.pendingAging['31-60']++;
+            else a.pendingAging['60+']++;
+          }
         });
 
-        a.averageReceiptValue = a.totalReceipts > 0 ? a.totalRevenue / a.totalReceipts : 0;
+        // Average receipt value - only count non-void receipts
+        const nonVoidReceipts = a.paidReceipts + a.pendingReceipts;
+        a.averageReceiptValue = nonVoidReceipts > 0 ? a.totalRevenue / nonVoidReceipts : 0;
         if (a.lastMonthRevenue > 0) {
           a.growthRate = ((a.thisMonthRevenue - a.lastMonthRevenue) / a.lastMonthRevenue) * 100;
         }
@@ -398,6 +469,110 @@ export default function Analytics() {
       });
     }
 
+    // 6) Payment Method Breakdown (doughnut)
+    if (paymentMethodRef.current && Object.keys(data.byPaymentMethod).length > 0) {
+      const methods = Object.entries(data.byPaymentMethod)
+        .sort((a, b) => b[1].revenue - a[1].revenue)
+        .slice(0, 6);  // Top 6 methods
+
+      chartsRef.current.paymentMethod = new ChartJS(paymentMethodRef.current, {
+        type: 'doughnut',
+        data: {
+          labels: methods.map(([method]) => method),
+          datasets: [{
+            data: methods.map(([, v]) => v.revenue),
+            backgroundColor: [
+              'rgba(14,165,233,.9)',
+              'rgba(16,185,129,.9)',
+              'rgba(245,158,11,.9)',
+              'rgba(139,92,246,.9)',
+              'rgba(236,72,153,.9)',
+              'rgba(59,130,246,.9)'
+            ],
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+              backgroundColor: '#1A202C',
+              padding: 12,
+              callbacks: {
+                label: (ctx) => {
+                  const label = ctx.label || '';
+                  const value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(ctx.raw);
+                  const method = methods.find(([m]) => m === label);
+                  const count = method ? method[1].count : 0;
+                  return `${label}: ${value} (${count} receipts)`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // 7) Pending Aging Analysis (bar)
+    if (agingRef.current) {
+      const agingLabels = ['0-7 days', '8-14 days', '15-30 days', '31-60 days', '60+ days'];
+      const agingData = [
+        data.pendingAging['0-7'],
+        data.pendingAging['8-14'],
+        data.pendingAging['15-30'],
+        data.pendingAging['31-60'],
+        data.pendingAging['60+']
+      ];
+
+      chartsRef.current.aging = new ChartJS(agingRef.current, {
+        type: 'bar',
+        data: {
+          labels: agingLabels,
+          datasets: [{
+            label: 'Pending Receipts',
+            data: agingData,
+            backgroundColor: [
+              'rgba(16,185,129,.9)',   // 0-7: green (good)
+              'rgba(59,130,246,.9)',    // 8-14: blue (ok)
+              'rgba(245,158,11,.9)',    // 15-30: yellow (warning)
+              'rgba(249,115,22,.9)',    // 31-60: orange (concerning)
+              'rgba(239,68,68,.9)'      // 60+: red (critical)
+            ],
+            borderColor: [
+              '#10B981',
+              '#3B82F6',
+              '#F59E0B',
+              '#F97316',
+              '#EF4444'
+            ],
+            borderWidth: 1,
+            borderRadius: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1A202C',
+              padding: 12,
+              callbacks: {
+                label: (ctx) => `${ctx.parsed.y} receipts pending`
+              }
+            }
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: { beginAtZero: true, grid: { color: '#E2E8F0' }, ticks: { stepSize: 1 } }
+          }
+        }
+      });
+    }
+
     return () => {
       Object.values(chartsRef.current).forEach(c => c && c.destroy());
     };
@@ -473,7 +648,7 @@ export default function Analytics() {
           <div className="analytics-kpi-content">
             <div className="analytics-kpi-label">Total Revenue</div>
             <div className="analytics-kpi-value">{formatCurrency(data.totalRevenue)}</div>
-            <div className="analytics-kpi-meta">{data.totalReceipts} total receipts</div>
+            <div className="analytics-kpi-meta">{data.paidReceipts + data.pendingReceipts} active receipts ({data.voidReceipts} voided)</div>
           </div>
         </div>
 
@@ -502,7 +677,27 @@ export default function Analytics() {
           <div className="analytics-kpi-content">
             <div className="analytics-kpi-label">Pending</div>
             <div className="analytics-kpi-value">{formatCurrency(data.pendingRevenue)}</div>
-            <div className="analytics-kpi-meta">{pendingRatio.toFixed(1)}% of total</div>
+            <div className="analytics-kpi-meta">{data.pendingReceipts} receipts ({pendingRatio.toFixed(1)}% of total)</div>
+          </div>
+        </div>
+
+        <div className="analytics-kpi-card">
+          <div className="analytics-kpi-icon">📊</div>
+          <div className="analytics-kpi-content">
+            <div className="analytics-kpi-label">Avg Daily Revenue</div>
+            <div className="analytics-kpi-value">{formatCurrency(data.thisMonthRevenue / new Date().getDate())}</div>
+            <div className="analytics-kpi-meta">This month (MTD)</div>
+          </div>
+        </div>
+
+        <div className="analytics-kpi-card">
+          <div className="analytics-kpi-icon">🔔</div>
+          <div className="analytics-kpi-content">
+            <div className="analytics-kpi-label">Action Needed</div>
+            <div className="analytics-kpi-value" style={{ color: data.pendingAging['31-60'] + data.pendingAging['60+'] > 0 ? '#DC2626' : '#10B981' }}>
+              {data.pendingAging['31-60'] + data.pendingAging['60+']}
+            </div>
+            <div className="analytics-kpi-meta">Overdue 30+ days</div>
           </div>
         </div>
       </div>
@@ -548,27 +743,43 @@ export default function Analytics() {
           </div>
           <div className="analytics-chart-container"><canvas ref={agenciesRef} /></div>
         </div>
+
+        <div className="analytics-chart-card">
+          <div className="analytics-chart-header">
+            <h3 className="analytics-chart-title">Payment Methods</h3>
+            <span className="analytics-chart-subtitle">Revenue breakdown by payment method</span>
+          </div>
+          <div className="analytics-chart-container"><canvas ref={paymentMethodRef} /></div>
+        </div>
+
+        <div className="analytics-chart-card">
+          <div className="analytics-chart-header">
+            <h3 className="analytics-chart-title">Pending Aging Analysis</h3>
+            <span className="analytics-chart-subtitle">Days pending by receipt count</span>
+          </div>
+          <div className="analytics-chart-container"><canvas ref={agingRef} /></div>
+        </div>
       </div>
 
       {/* Insights */}
       <div className="analytics-insights">
-        <h3 className="analytics-insights-title">Key Insights</h3>
+        <h3 className="analytics-insights-title">Key Insights & Recommendations</h3>
         <div className="analytics-insights-grid">
           <div className="analytics-insight-card">
             <div className="analytics-insight-icon">🏆</div>
             <div className="analytics-insight-content">
               <div className="analytics-insight-label">Top Performer</div>
               <div className="analytics-insight-value">{top1?.name?.slice(0,24) || 'N/A'}</div>
-              <div className="analytics-insight-desc">{formatCurrency(top1?.revenue || 0)} in revenue</div>
+              <div className="analytics-insight-desc">{formatCurrency(top1?.revenue || 0)} in revenue ({top1?.count || 0} receipts)</div>
             </div>
           </div>
 
           <div className="analytics-insight-card">
             <div className="analytics-insight-icon">📦</div>
             <div className="analytics-insight-content">
-              <div className="analytics-insight-label">Avg Receipt</div>
+              <div className="analytics-insight-label">Avg Receipt Value</div>
               <div className="analytics-insight-value">{formatCurrency(data.averageReceiptValue)}</div>
-              <div className="analytics-insight-desc">Across {data.totalReceipts} receipts</div>
+              <div className="analytics-insight-desc">Across {data.paidReceipts + data.pendingReceipts} active receipts</div>
             </div>
           </div>
 
@@ -577,7 +788,50 @@ export default function Analytics() {
             <div className="analytics-insight-content">
               <div className="analytics-insight-label">Pending Exposure</div>
               <div className="analytics-insight-value">{pendingRatio.toFixed(1)}%</div>
-              <div className="analytics-insight-desc">{formatCurrency(data.pendingRevenue)} still outstanding</div>
+              <div className="analytics-insight-desc">{formatCurrency(data.pendingRevenue)} outstanding ({data.pendingReceipts} receipts)</div>
+            </div>
+          </div>
+
+          <div className="analytics-insight-card">
+            <div className="analytics-insight-icon">⏰</div>
+            <div className="analytics-insight-content">
+              <div className="analytics-insight-label">Aging Alert</div>
+              <div className="analytics-insight-value">{data.pendingAging['60+']}</div>
+              <div className="analytics-insight-desc">
+                {data.pendingAging['60+'] > 0
+                  ? 'receipts overdue 60+ days - follow up needed'
+                  : 'No critical overdue receipts'}
+              </div>
+            </div>
+          </div>
+
+          <div className="analytics-insight-card">
+            <div className="analytics-insight-icon">💳</div>
+            <div className="analytics-insight-content">
+              <div className="analytics-insight-label">Payment Methods</div>
+              <div className="analytics-insight-value">{Object.keys(data.byPaymentMethod).length}</div>
+              <div className="analytics-insight-desc">
+                {(() => {
+                  const methods = Object.entries(data.byPaymentMethod).sort((a, b) => b[1].revenue - a[1].revenue);
+                  const top = methods[0];
+                  return top ? `Top: ${top[0]} (${formatCurrency(top[1].revenue)})` : 'No data';
+                })()}
+              </div>
+            </div>
+          </div>
+
+          <div className="analytics-insight-card">
+            <div className="analytics-insight-icon">🎯</div>
+            <div className="analytics-insight-content">
+              <div className="analytics-insight-label">Collection Efficiency</div>
+              <div className="analytics-insight-value">{collectionRate.toFixed(1)}%</div>
+              <div className="analytics-insight-desc">
+                {collectionRate >= 80
+                  ? 'Excellent collection rate'
+                  : collectionRate >= 60
+                    ? 'Good - room for improvement'
+                    : 'Needs attention - increase follow-ups'}
+              </div>
             </div>
           </div>
         </div>

@@ -1,9 +1,18 @@
 // src/pages/TravelAgencies.js
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
 import './TravelAgencies.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Auto-detect API URL based on window location
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 const authHeaders = () => {
   const token =
@@ -50,6 +59,12 @@ export default function TravelAgencies() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
+  // Agency details modal state
+  const [selectedAgency, setSelectedAgency] = useState(null);
+  const [agencyReceipts, setAgencyReceipts] = useState([]);
+  const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [receiptsError, setReceiptsError] = useState('');
+
   const load = async () => {
     try {
       setLoading(true);
@@ -65,6 +80,37 @@ export default function TravelAgencies() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Fetch receipts for a specific agency
+  const fetchAgencyReceipts = async (agency) => {
+    try {
+      setLoadingReceipts(true);
+      setReceiptsError('');
+
+      // Fetch receipts filtered by agency_id
+      const data = await apiGet(`/receipts?agency_id=${agency.agency_id}&pageSize=1000`);
+      const receipts = data?.data?.receipts || data?.receipts || [];
+      setAgencyReceipts(receipts);
+    } catch (e) {
+      setReceiptsError(e.message || 'Failed to load receipts');
+      setAgencyReceipts([]);
+    } finally {
+      setLoadingReceipts(false);
+    }
+  };
+
+  // Open agency details modal
+  const openAgencyDetails = async (agency) => {
+    setSelectedAgency(agency);
+    await fetchAgencyReceipts(agency);
+  };
+
+  // Close agency details modal
+  const closeAgencyDetails = () => {
+    setSelectedAgency(null);
+    setAgencyReceipts([]);
+    setReceiptsError('');
+  };
 
   // Filtered list
   const filteredAgencies = agencies.filter(a => {
@@ -410,9 +456,12 @@ export default function TravelAgencies() {
                 </div>
 
                 <div className="agency-card-footer">
-                  <Link to={`/agencies/${agency.id || agency.agency_id}`} className="agency-btn agency-btn--view">
+                  <button
+                    onClick={() => openAgencyDetails(agency)}
+                    className="agency-btn agency-btn--view"
+                  >
                     View Details
-                  </Link>
+                  </button>
                   <button className="agency-btn agency-btn--edit" title="Coming soon">Edit</button>
                 </div>
               </div>
@@ -476,6 +525,150 @@ export default function TravelAgencies() {
                 <code> agency_name, agency_id, contact_email </code>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Agency Details Modal */}
+      {selectedAgency && (
+        <div className="agencies-modal-overlay" onClick={closeAgencyDetails}>
+          <div className="agencies-modal agencies-modal--large" onClick={(e) => e.stopPropagation()}>
+            <div className="agencies-modal-header">
+              <div>
+                <h3>{selectedAgency.agency_name}</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '14px', opacity: 0.8 }}>
+                  ID: {selectedAgency.agency_id}
+                </p>
+              </div>
+              <button className="modal-close" onClick={closeAgencyDetails}>✕</button>
+            </div>
+
+            <div className="agency-details-stats">
+              <div className="agency-stat">
+                <div className="agency-stat-label">Total Receipts</div>
+                <div className="agency-stat-value">{agencyReceipts.length}</div>
+              </div>
+              <div className="agency-stat">
+                <div className="agency-stat-label">Pending Receipts</div>
+                <div className="agency-stat-value agency-stat-value--pending">
+                  {agencyReceipts.filter(r => r.status?.toUpperCase() === 'PENDING').length}
+                </div>
+              </div>
+              <div className="agency-stat">
+                <div className="agency-stat-label">Pending Amount</div>
+                <div className="agency-stat-value agency-stat-value--pending">
+                  ${agencyReceipts
+                    .filter(r => r.status?.toUpperCase() === 'PENDING')
+                    .reduce((sum, r) => {
+                      // Use amount_remaining if available (for partial payments), otherwise full amount
+                      const remaining = r.amount_remaining !== undefined && r.amount_remaining !== null
+                        ? parseFloat(r.amount_remaining)
+                        : parseFloat(r.amount || 0);
+                      return sum + remaining;
+                    }, 0)
+                    .toFixed(2)}
+                </div>
+              </div>
+              <div className="agency-stat">
+                <div className="agency-stat-label">Total Revenue</div>
+                <div className="agency-stat-value agency-stat-value--success">
+                  ${agencyReceipts
+                    .filter(r => r.status?.toUpperCase() !== 'VOID')
+                    .reduce((sum, r) => {
+                      // For PAID receipts, use full amount
+                      // For PENDING receipts, use amount_paid if available (partial payments)
+                      if (r.status?.toUpperCase() === 'PAID') {
+                        return sum + parseFloat(r.amount || 0);
+                      } else if (r.status?.toUpperCase() === 'PENDING') {
+                        const paid = r.amount_paid !== undefined && r.amount_paid !== null
+                          ? parseFloat(r.amount_paid)
+                          : 0;
+                        return sum + paid;
+                      }
+                      return sum;
+                    }, 0)
+                    .toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div className="agency-receipts-section">
+              <h4 style={{ margin: '0 0 16px', fontSize: '16px' }}>All Receipts</h4>
+
+              {loadingReceipts ? (
+                <div style={{ padding: '40px', textAlign: 'center', opacity: 0.6 }}>
+                  Loading receipts...
+                </div>
+              ) : receiptsError ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#e53e3e' }}>
+                  {receiptsError}
+                </div>
+              ) : agencyReceipts.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', opacity: 0.6 }}>
+                  No receipts found for this agency.
+                </div>
+              ) : (
+                <div className="agency-receipts-table-wrapper">
+                  <table className="agency-receipts-table">
+                    <thead>
+                      <tr>
+                        <th>Receipt #</th>
+                        <th>Date</th>
+                        <th>Total Amount</th>
+                        <th>Paid</th>
+                        <th>Remaining</th>
+                        <th>Status</th>
+                        <th>Payment Method</th>
+                        <th>Issued By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agencyReceipts.map((receipt) => {
+                        const totalAmount = parseFloat(receipt.amount || 0);
+                        const amountPaid = parseFloat(receipt.amount_paid || 0);
+                        const amountRemaining = receipt.amount_remaining !== undefined && receipt.amount_remaining !== null
+                          ? parseFloat(receipt.amount_remaining)
+                          : (receipt.status?.toUpperCase() === 'PAID' ? 0 : totalAmount - amountPaid);
+
+                        return (
+                          <tr key={receipt.id}>
+                            <td><strong>{receipt.receipt_number}</strong></td>
+                            <td>
+                              {new Date(receipt.issue_date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </td>
+                            <td><strong>${totalAmount.toFixed(2)}</strong></td>
+                            <td style={{ color: amountPaid > 0 ? '#48bb78' : '#718096' }}>
+                              ${amountPaid.toFixed(2)}
+                            </td>
+                            <td style={{ color: amountRemaining > 0 ? '#f56565' : '#48bb78' }}>
+                              ${amountRemaining.toFixed(2)}
+                            </td>
+                            <td>
+                              <span className={`receipt-status receipt-status--${receipt.status?.toLowerCase()}`}>
+                                {receipt.status}
+                                {amountPaid > 0 && receipt.status?.toUpperCase() === 'PENDING' && ' (Partial)'}
+                              </span>
+                            </td>
+                            <td>{receipt.payment_method || 'N/A'}</td>
+                            <td>{receipt.issued_by || 'N/A'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '24px' }}>
+              <button className="agencies-btn" onClick={closeAgencyDetails}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

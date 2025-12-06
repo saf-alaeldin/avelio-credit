@@ -360,9 +360,133 @@ const exportMonthlySummaryPDF = async (req, res) => {
   }
 };
 
+// Export cash closing report data
+const getCashClosingData = async (req, res) => {
+  try {
+    const { date, month, year, station, includeAfterHours } = req.query;
+
+    let query;
+    let params = [];
+    let dateCondition = '';
+
+    // Determine date range
+    if (month && year) {
+      // Monthly report
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0); // Last day of month
+      dateCondition = 'r.issue_date >= $1 AND r.issue_date <= $2';
+      params.push(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]);
+    } else {
+      // Daily report
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      dateCondition = 'r.issue_date = $1';
+      params.push(targetDate);
+    }
+
+    // Build base query
+    query = `
+      SELECT
+        r.id,
+        r.receipt_number,
+        r.issue_date,
+        r.issue_time,
+        r.amount,
+        r.amount_paid,
+        r.currency,
+        r.status,
+        r.payment_method,
+        r.station_code,
+        a.agency_name,
+        a.agency_id,
+        CASE
+          WHEN r.issue_time IS NOT NULL AND r.issue_time >= '18:00:00' THEN true
+          WHEN r.issue_time IS NOT NULL AND r.issue_time < '08:00:00' THEN true
+          ELSE false
+        END as after_hours
+      FROM receipts r
+      LEFT JOIN agencies a ON r.agency_id = a.id
+      WHERE ${dateCondition} AND r.is_void = false
+    `;
+
+    // Add station filter
+    if (station && station !== 'ALL') {
+      query += ` AND r.station_code = $${params.length + 1}`;
+      params.push(station);
+    }
+
+    // Filter after hours if needed
+    if (includeAfterHours === 'false') {
+      query += ` AND (r.issue_time IS NULL OR (r.issue_time >= '08:00:00' AND r.issue_time < '18:00:00'))`;
+    }
+
+    query += ` ORDER BY r.issue_date DESC, r.issue_time DESC`;
+
+    const result = await db.query(query, params);
+    const receipts = result.rows;
+
+    // Calculate summaries
+    const totalReceipts = receipts.length;
+    const totalAmount = receipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+    // Separate regular and after hours
+    const regularHoursReceipts = receipts.filter(r => !r.after_hours);
+    const afterHoursReceipts = receipts.filter(r => r.after_hours);
+
+    const regularHoursAmount = regularHoursReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+    const afterHoursAmount = afterHoursReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+    // Payment method breakdown
+    const paymentBreakdown = {};
+    receipts.forEach(r => {
+      const method = r.payment_method || 'CASH';
+      if (!paymentBreakdown[method]) {
+        paymentBreakdown[method] = { count: 0, amount: 0 };
+      }
+      paymentBreakdown[method].count++;
+      paymentBreakdown[method].amount += parseFloat(r.amount || 0);
+    });
+
+    // Status breakdown
+    const statusBreakdown = {};
+    receipts.forEach(r => {
+      const status = r.status || 'PENDING';
+      if (!statusBreakdown[status]) {
+        statusBreakdown[status] = { count: 0, amount: 0 };
+      }
+      statusBreakdown[status].count++;
+      statusBreakdown[status].amount += parseFloat(r.amount || 0);
+    });
+
+    res.json({
+      success: true,
+      totalReceipts,
+      totalAmount,
+      regularHoursCount: regularHoursReceipts.length,
+      regularHoursAmount,
+      afterHoursCount: afterHoursReceipts.length,
+      afterHoursAmount,
+      paymentBreakdown,
+      statusBreakdown,
+      receipts: receipts.map(r => ({
+        ...r,
+        amount: parseFloat(r.amount || 0),
+        amount_paid: parseFloat(r.amount_paid || 0)
+      }))
+    });
+
+  } catch (error) {
+    console.error('Cash closing data error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate cash closing data'
+    });
+  }
+};
+
 module.exports = {
   exportToCSV,
   exportSummaryCSV,
   exportDailySummaryPDF,
-  exportMonthlySummaryPDF
+  exportMonthlySummaryPDF,
+  getCashClosingData
 };

@@ -5,7 +5,17 @@ import { Search } from 'lucide-react';
 import ReceiptDetailsModal from '../pages/ReceiptDetailsModal';
 import './Receipts.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Auto-detect API URL based on window location
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 async function apiGet(path, params = {}) {
   const url = new URL(API_BASE + path);
@@ -85,8 +95,22 @@ export default function Receipts() {
         params.status = statusFilter;
       }
 
-      if (dateFrom) params.date_from = dateFrom;
-      if (dateTo) params.date_to = dateTo;
+      // Add search parameter for server-side search
+      if (searchQuery && searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+
+      // Allow single date selection - if only one date is selected, use it for both
+      if (dateFrom && !dateTo) {
+        params.date_from = dateFrom;
+        params.date_to = dateFrom; // Use same date for single day filter
+      } else if (!dateFrom && dateTo) {
+        params.date_from = dateTo; // Use same date for single day filter
+        params.date_to = dateTo;
+      } else {
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+      }
 
       const data = await apiGet('/receipts', params);
 
@@ -109,24 +133,15 @@ export default function Receipts() {
           const st = String(r.status || '').toUpperCase();
           return st === 'PENDING' && isOverdue(r);
         });
-      } else if (statusFilter === 'PENDING') {
-        // PENDING: Only PENDING receipts NOT overdue
+      } else if (statusFilter === 'PENDING' && !searchQuery) {
+        // PENDING: Only PENDING receipts NOT overdue (but skip this filter if searching)
         list = list.filter(r => {
           const st = String(r.status || '').toUpperCase();
           return st === 'PENDING' && !isOverdue(r);
         });
       }
       // For PAID, date filters, and ALL tab, trust backend filtering
-
-      // Apply client-side search filtering if needed
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
-        list = list.filter(receipt =>
-          receipt.receipt_number?.toLowerCase().includes(query) ||
-          receipt.agency_name?.toLowerCase().includes(query) ||
-          receipt.agency_id?.toLowerCase().includes(query)
-        );
-      }
+      // Note: Search is now handled server-side, so no client-side filtering needed
 
       const tot =
         (typeof data?.total === 'number' && data.total) ??
@@ -135,8 +150,8 @@ export default function Receipts() {
         list.length;
 
       setReceipts(list);
-      // Use filtered list length when applying client-side filters (overdue, pending, or search)
-      const useFilteredCount = overdueFilter || statusFilter === 'PENDING' || searchQuery.trim();
+      // Use filtered list length only for client-side filters (overdue, pending without search)
+      const useFilteredCount = overdueFilter || (statusFilter === 'PENDING' && !searchQuery);
       setTotal(useFilteredCount ? list.length : Number(tot || 0));
     } catch (e) {
       setError(e.message || 'Failed to load receipts');
@@ -276,7 +291,7 @@ export default function Receipts() {
               setSearchQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by receipt number or agency..."
+            placeholder="Search receipts, agencies, amounts, status..."
             style={{
               width: '100%',
               padding: '10px 12px 10px 40px',
@@ -356,29 +371,33 @@ export default function Receipts() {
         {/* Date Filters */}
         <div className="receipts-date-filters">
           <div className="receipts-date-input-group">
-            <label className="receipts-date-label">From</label>
+            <label className="receipts-date-label">From Date</label>
             <input
               type="date"
               className="receipts-date-input"
               value={manualDateFrom}
               onChange={(e) => {
                 setManualDateFrom(e.target.value);
+                setPage(1);
                 // Clear URL params when manually changing date filters
                 setSearchParams({});
               }}
+              title="Select start date (optional)"
             />
           </div>
           <div className="receipts-date-input-group">
-            <label className="receipts-date-label">To</label>
+            <label className="receipts-date-label">To Date</label>
             <input
               type="date"
               className="receipts-date-input"
               value={manualDateTo}
               onChange={(e) => {
                 setManualDateTo(e.target.value);
+                setPage(1);
                 // Clear URL params when manually changing date filters
                 setSearchParams({});
               }}
+              title="Select end date (optional)"
             />
           </div>
           {(dateFrom || dateTo || statusFilter || overdueFilter || searchQuery) && (
@@ -404,6 +423,7 @@ export default function Receipts() {
                     <th className="receipts-th">Receipt #</th>
                     <th className="receipts-th">Agency</th>
                     <th className="receipts-th">Amount</th>
+                    <th className="receipts-th">Paid</th>
                     <th className="receipts-th">Currency</th>
                     <th className="receipts-th">Status</th>
                     <th className="receipts-th">Issue Date</th>
@@ -411,47 +431,69 @@ export default function Receipts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {receipts.map((receipt) => (
-                    <tr 
-                      key={receipt.id || receipt.receipt_number}
-                      onClick={() => handleReceiptClick(receipt)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <td className="receipts-td">{receipt.receipt_number}</td>
-                      <td className="receipts-td">{receipt.agency?.agency_name || receipt.agency_name || 'N/A'}</td>
-                      <td className="receipts-td">{Number(receipt.amount || 0).toFixed(2)}</td>
-                      <td className="receipts-td">{receipt.currency || '-'}</td>
-                      <td className="receipts-td">{statusPill(receipt)}</td>
-                      <td className="receipts-td">{formatDT(receipt.issue_date, receipt.issue_time)}</td>
+                  {receipts.map((receipt) => {
+                    const amountPaid = parseFloat(receipt.amount_paid || 0);
+                    const hasPartialPayment = amountPaid > 0 && receipt.status?.toUpperCase() === 'PENDING';
+
+                    return (
+                      <tr
+                        key={receipt.id || receipt.receipt_number}
+                        onClick={() => handleReceiptClick(receipt)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td className="receipts-td">{receipt.receipt_number}</td>
+                        <td className="receipts-td">{receipt.agency?.agency_name || receipt.agency_name || 'N/A'}</td>
+                        <td className="receipts-td">{Number(receipt.amount || 0).toFixed(2)}</td>
+                        <td className="receipts-td" style={{ color: amountPaid > 0 ? '#48bb78' : '#718096' }}>
+                          {amountPaid.toFixed(2)}
+                        </td>
+                        <td className="receipts-td">{receipt.currency || '-'}</td>
+                        <td className="receipts-td">
+                          {statusPill(receipt)}
+                          {hasPartialPayment && <span style={{ marginLeft: '4px', fontSize: '11px', color: '#f6ad55' }}>(Partial)</span>}
+                        </td>
+                        <td className="receipts-td">{formatDT(receipt.issue_date, receipt.issue_time)}</td>
                       <td className="receipts-td">
-                        <button
-                          className="receipts-btn receipts-btn--ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            (async () => {
-                              try {
-                                const token =
-                                  localStorage.getItem('token') ||
-                                  localStorage.getItem('authToken') ||
-                                  sessionStorage.getItem('token');
-                                const res = await fetch(`${API_BASE}/receipts/${receipt.id}/pdf`, {
-                                  headers: token ? { Authorization: `Bearer ${token}` } : {},
-                                });
-                                if (!res.ok) throw new Error('Failed to fetch PDF');
-                                const blob = await res.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                window.open(url, '_blank');
-                              } catch (err) {
-                                alert('Error downloading PDF: ' + err.message);
-                              }
-                            })();
-                          }}
-                        >
-                          PDF
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="receipts-btn receipts-btn--ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReceiptClick(receipt);
+                            }}
+                          >
+                            View
+                          </button>
+                          <button
+                            className="receipts-btn receipts-btn--ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              (async () => {
+                                try {
+                                  const token =
+                                    localStorage.getItem('token') ||
+                                    localStorage.getItem('authToken') ||
+                                    sessionStorage.getItem('token');
+                                  const res = await fetch(`${API_BASE}/receipts/${receipt.id}/pdf`, {
+                                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                                  });
+                                  if (!res.ok) throw new Error('Failed to fetch PDF');
+                                  const blob = await res.blob();
+                                  const url = window.URL.createObjectURL(blob);
+                                  window.open(url, '_blank');
+                                } catch (err) {
+                                  alert('Error downloading PDF: ' + err.message);
+                                }
+                              })();
+                            }}
+                          >
+                            PDF
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

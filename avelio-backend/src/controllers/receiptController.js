@@ -260,7 +260,7 @@ const createReceipt = async (req, res) => {
 // GET ALL RECEIPTS
 const getReceipts = async (req, res) => {
   try {
-    const { status, agency_id, date_from, date_to, page = 1, pageSize = 20 } = req.query;
+    const { status, agency_id, date_from, date_to, search, page = 1, pageSize = 20 } = req.query;
     const userId = req.user.id;
     const userRole = req.user.role || 'staff';
 
@@ -323,6 +323,23 @@ const getReceipts = async (req, res) => {
       paramCount++;
     }
 
+    // Add search filter - searches across multiple fields
+    if (search && search.trim()) {
+      filterClause += ` AND (
+        LOWER(r.receipt_number) LIKE LOWER($${paramCount}) OR
+        LOWER(a.agency_name) LIKE LOWER($${paramCount}) OR
+        LOWER(a.agency_id) LIKE LOWER($${paramCount}) OR
+        LOWER(r.status) LIKE LOWER($${paramCount}) OR
+        LOWER(r.currency) LIKE LOWER($${paramCount}) OR
+        CAST(r.amount AS TEXT) LIKE $${paramCount} OR
+        CAST(r.amount_paid AS TEXT) LIKE $${paramCount} OR
+        LOWER(r.payment_method) LIKE LOWER($${paramCount}) OR
+        LOWER(r.remarks) LIKE LOWER($${paramCount})
+      )`;
+      params.push(`%${search.trim()}%`);
+      paramCount++;
+    }
+
     // Apply filters to both queries
     countQuery += filterClause;
     query += filterClause;
@@ -353,6 +370,8 @@ const getReceipts = async (req, res) => {
             agency_name: r.agency_name
           },
           amount: parseFloat(r.amount),
+          amount_paid: parseFloat(r.amount_paid || 0),
+          amount_remaining: parseFloat(r.amount_remaining !== undefined && r.amount_remaining !== null ? r.amount_remaining : r.amount),
           currency: r.currency,
           status: r.status,
           payment_method: r.payment_method,
@@ -412,6 +431,8 @@ const getReceiptById = async (req, res) => {
             contact_email: r.contact_email
           },
           amount: parseFloat(r.amount),
+          amount_paid: parseFloat(r.amount_paid || 0),
+          amount_remaining: parseFloat(r.amount_remaining !== undefined && r.amount_remaining !== null ? r.amount_remaining : r.amount),
           currency: r.currency,
           status: r.status,
           payment_method: r.payment_method,

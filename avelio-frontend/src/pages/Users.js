@@ -2,7 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { UserPlus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react';
 import './Users.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Auto-detect API URL based on window location
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 export default function Users() {
   const [users, setUsers] = useState([]);

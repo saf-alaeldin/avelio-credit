@@ -19,9 +19,19 @@ function Login() {
     try {
       console.log('🔐 Attempting login...');
 
-      // Get API URL from environment or use port 5001 with /api/v1
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+      // Auto-detect API URL based on window location
+      const getApiUrl = () => {
+        if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+        const hostname = window.location.hostname;
+        const port = 5001;
+        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+          return `http://${hostname}:${port}/api/v1`;
+        }
+        return `http://localhost:${port}/api/v1`;
+      };
+      const apiUrl = getApiUrl();
       console.log('📡 API URL:', apiUrl);
+      console.log('📡 Hostname:', window.location.hostname);
 
       // Make login request with username
       const response = await fetch(`${apiUrl}/auth/login`, {

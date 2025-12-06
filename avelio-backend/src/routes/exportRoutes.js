@@ -18,4 +18,7 @@ router.get('/daily-summary', exportController.exportDailySummaryPDF);
 // GET /api/v1/export/monthly-summary - Export monthly receipts summary as PDF
 router.get('/monthly-summary', exportController.exportMonthlySummaryPDF);
 
+// GET /api/v1/export/cash-closing - Get cash closing data for reports
+router.get('/cash-closing', exportController.getCashClosingData);
+
 module.exports = router;

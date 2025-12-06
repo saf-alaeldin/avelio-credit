@@ -3,55 +3,43 @@ import logger from '../utils/logger';
 import cache, { CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 
 // ========================================
-// SMART API URL DETECTION
+// SMART API URL DETECTION (Auto-detects based on window location)
 // ========================================
 const getApiBaseUrl = () => {
-  // 1. First priority: Environment variable (set in deployment platform)
+  // Debug logging
+  console.log('🔍 DEBUG - Detecting API URL...');
+  console.log('   window.location.hostname:', window.location.hostname);
+  console.log('   window.location.href:', window.location.href);
+  console.log('   process.env.REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+
+  // 1. First priority: Environment variable (if set)
   if (process.env.REACT_APP_API_URL) {
-    // Validate HTTPS in production
-    if (process.env.NODE_ENV === 'production' && !process.env.REACT_APP_API_URL.startsWith('https://')) {
-      throw new Error('SECURITY ERROR: API URL must use HTTPS in production');
-    }
+    console.log('   ✅ Using env variable:', process.env.REACT_APP_API_URL);
     return process.env.REACT_APP_API_URL;
   }
 
-  // 2. Check if in production
-  if (process.env.NODE_ENV === 'production') {
-    const hostname = window.location.hostname;
+  // 2. Auto-detect based on current window location (for local network access)
+  const hostname = window.location.hostname;
+  const port = 5001; // Backend port
 
-    // Detect deployment platform and construct API URL
-    if (hostname.includes('vercel.app')) {
-      const apiUrl = hostname.replace('avelio', 'avelio-api');
-      return `https://${apiUrl}/api/v1`;
-    }
-
-    if (hostname.includes('netlify.app')) {
-      const apiUrl = hostname.replace('avelio', 'avelio-api');
-      return `https://${apiUrl}/api/v1`;
-    }
-
-    if (hostname.includes('render.com')) {
-      return 'https://avelio-credit.onrender.com/api/v1';
-    }
-
-    // FAIL SAFELY: Don't use placeholder URL in production
-    throw new Error(
-      'CRITICAL: REACT_APP_API_URL environment variable must be set in production. ' +
-      'Please configure it in your deployment platform settings.'
-    );
+  // If accessing via network IP, use that same IP for backend
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    const apiUrl = `http://${hostname}:${port}/api/v1`;
+    console.log('   ✅ Using network IP:', apiUrl);
+    return apiUrl;
   }
 
-  // 3. Development fallback
-  return 'http://localhost:5001/api/v1';
+  // 3. Default to localhost for local development
+  const apiUrl = `http://localhost:${port}/api/v1`;
+  console.log('   ✅ Using localhost:', apiUrl);
+  return apiUrl;
 };
 
 // ========================================
 // AXIOS INSTANCE WITH BASE CONFIGURATION
 // ========================================
-const API_BASE_URL = getApiBaseUrl();
-
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: 'http://placeholder', // Will be set dynamically per request
   headers: {
     'Content-Type': 'application/json'
   },
@@ -59,20 +47,26 @@ const api = axios.create({
   withCredentials: false // Set to true if using cookies
 });
 
-// Log configuration on startup
-logger.info('🌐 API Configuration:');
-logger.info('  - Base URL:', api.defaults.baseURL);
-logger.info('  - Environment:', process.env.NODE_ENV);
-logger.info('  - Timeout:', api.defaults.timeout + 'ms');
-
 // ========================================
-// REQUEST INTERCEPTOR - Add token to every request
+// REQUEST INTERCEPTOR - Set dynamic baseURL and add token
 // ========================================
 api.interceptors.request.use(
   (config) => {
+    // Dynamically set baseURL based on current window location
+    config.baseURL = getApiBaseUrl();
+
+    // Log configuration (only once)
+    if (!window._apiConfigLogged) {
+      logger.info('🌐 API Configuration:');
+      logger.info('  - Base URL:', config.baseURL);
+      logger.info('  - Hostname:', window.location.hostname);
+      logger.info('  - Environment:', process.env.NODE_ENV);
+      window._apiConfigLogged = true;
+    }
+
     // Get token from localStorage
     const token = localStorage.getItem('token');
-    
+
     // Add token to headers if it exists
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -80,7 +74,7 @@ api.interceptors.request.use(
     } else {
       logger.debug('⚠️ No token found in localStorage');
     }
-    
+
     return config;
   },
   (error) => {
