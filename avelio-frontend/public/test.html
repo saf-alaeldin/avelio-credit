@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Test - Avelio</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+        .error { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+        .info { background: #d1ecf1; color: #0c5460; border-left: 4px solid #17a2b8; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        h1 { color: #333; }
+        h2 { color: #555; margin-top: 0; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Avelio Network Connection Test</h1>
+
+    <div class="box info">
+        <h2>Current Connection Details</h2>
+        <div id="connectionInfo"></div>
+    </div>
+
+    <div class="box">
+        <h2>Backend API Test</h2>
+        <button onclick="testBackend()">🚀 Test Backend Connection</button>
+        <button onclick="testLogin()">🔐 Test Login Endpoint</button>
+        <div id="testResult" style="margin-top: 20px;"></div>
+    </div>
+
+    <div class="box info">
+        <h2>📋 Instructions for Network Users</h2>
+        <p><strong>If you see "localhost" in the detected API URL above, your browser has cached JavaScript!</strong></p>
+        <ol>
+            <li><strong>Close ALL browser windows completely</strong></li>
+            <li><strong>Reopen browser</strong></li>
+            <li><strong>Try in Incognito/Private mode:</strong>
+                <ul>
+                    <li>Chrome: Ctrl+Shift+N (Cmd+Shift+N on Mac)</li>
+                    <li>Firefox: Ctrl+Shift+P (Cmd+Shift+P on Mac)</li>
+                    <li>Edge: Ctrl+Shift+N</li>
+                </ul>
+            </li>
+            <li><strong>Go to:</strong> <code>http://192.168.7.114:3000/test.html</code></li>
+        </ol>
+    </div>
+
+    <script>
+        // Display current connection info
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const port = 5001;
+
+        const detectedApiUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1')
+            ? `http://${hostname}:${port}/api/v1`
+            : `http://localhost:${port}/api/v1`;
+
+        document.getElementById('connectionInfo').innerHTML = `
+            <pre>Protocol: ${protocol}
+Hostname: ${hostname}
+Full URL: ${window.location.href}
+Detected API URL: ${detectedApiUrl}
+User Agent: ${navigator.userAgent.substring(0, 80)}...</pre>
+        `;
+
+        async function testBackend() {
+            const resultDiv = document.getElementById('testResult');
+            resultDiv.innerHTML = '<div class="box info">Testing backend health endpoint...</div>';
+
+            const healthUrl = `${detectedApiUrl.replace('/api/v1', '')}/health`;
+
+            try {
+                const response = await fetch(healthUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="box success">
+                            <h3>✅ SUCCESS! Backend is reachable</h3>
+                            <strong>URL tested:</strong> ${healthUrl}<br>
+                            <strong>Status:</strong> ${response.status}<br>
+                            <strong>Response:</strong><br>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="box error">
+                            <h3>❌ Backend returned error</h3>
+                            <strong>Status:</strong> ${response.status}<br>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="box error">
+                        <h3>❌ CONNECTION FAILED</h3>
+                        <strong>Error:</strong> ${error.message}<br>
+                        <strong>URL attempted:</strong> ${healthUrl}<br><br>
+                        <strong>This means:</strong>
+                        <ul>
+                            <li>Backend server is not running, OR</li>
+                            <li>Firewall is blocking the connection, OR</li>
+                            <li>Network routing issue</li>
+                        </ul>
+                        <p><strong>If you see "localhost" in the URL above but you're accessing via network IP (192.168.x.x),
+                        your browser has CACHED old JavaScript files. Use Incognito mode!</strong></p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('testResult');
+            resultDiv.innerHTML = '<div class="box info">Testing login endpoint...</div>';
+
+            const loginUrl = `${detectedApiUrl}/auth/login`;
+
+            try {
+                const response = await fetch(loginUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ username: 'test', password: 'test' })
+                });
+
+                const data = await response.json();
+
+                resultDiv.innerHTML = `
+                    <div class="box ${response.ok ? 'success' : 'info'}">
+                        <h3>${response.ok ? '✅' : 'ℹ️'} Login endpoint responded</h3>
+                        <strong>URL tested:</strong> ${loginUrl}<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        ${!response.ok ? '<p><em>Note: 400/401 errors are expected with test credentials. The important thing is that the endpoint is reachable!</em></p>' : ''}
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="box error">
+                        <h3>❌ LOGIN ENDPOINT FAILED</h3>
+                        <strong>Error:</strong> ${error.message}<br>
+                        <strong>URL attempted:</strong> ${loginUrl}<br><br>
+                        <strong>If URL shows "localhost" but you accessed via 192.168.x.x:</strong>
+                        <p>Your browser has CACHED JavaScript! Try Incognito mode or clear ALL browser data.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-test on load
+        window.onload = () => {
+            if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+                console.log('Network access detected, auto-testing backend...');
+                testBackend();
+            }
+        };
+    </script>
+</body>
+</html>

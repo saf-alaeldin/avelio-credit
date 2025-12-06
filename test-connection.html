@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avelio Network Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Avelio Network Connection Test</h1>
+
+    <div class="test-box">
+        <h2>Current Connection Info</h2>
+        <div id="connectionInfo"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>Backend Connectivity Test</h2>
+        <button onclick="testBackend()">Test Backend Connection</button>
+        <div id="backendResult"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>Instructions</h2>
+        <div class="status info">
+            <strong>If you see connection errors, follow these steps:</strong>
+            <ol>
+                <li><strong>Clear HSTS Cache:</strong>
+                    <ul>
+                        <li><strong>Chrome/Edge:</strong> Go to <code>chrome://net-internals/#hsts</code>, enter <code>192.168.7.114</code> in "Delete domain security policies" and click Delete</li>
+                        <li><strong>Firefox:</strong> Close Firefox completely, then delete <code>SiteSecurityServiceState.txt</code> from your Firefox profile folder</li>
+                        <li><strong>Safari:</strong> Close Safari, then run in Terminal: <code>defaults delete com.apple.Safari WebKitHSTSData</code></li>
+                    </ul>
+                </li>
+                <li><strong>Clear Browser Cache:</strong> Press <code>Ctrl+Shift+Delete</code> (or <code>Cmd+Shift+Delete</code> on Mac)</li>
+                <li><strong>Hard Refresh:</strong> Press <code>Ctrl+Shift+R</code> (or <code>Cmd+Shift+R</code> on Mac)</li>
+                <li><strong>Restart Browser:</strong> Close and reopen your browser completely</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // Display connection info
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const detectedApiUrl = hostname !== 'localhost' && hostname !== '127.0.0.1'
+            ? `http://${hostname}:5001/api/v1`
+            : 'http://localhost:5001/api/v1';
+
+        document.getElementById('connectionInfo').innerHTML = `
+            <div class="status info">
+                <strong>Protocol:</strong> ${protocol}<br>
+                <strong>Hostname:</strong> ${hostname}<br>
+                <strong>Detected API URL:</strong> ${detectedApiUrl}<br>
+                <strong>Current URL:</strong> ${window.location.href}
+            </div>
+        `;
+
+        // Test backend connection
+        async function testBackend() {
+            const resultDiv = document.getElementById('backendResult');
+            resultDiv.innerHTML = '<div class="status info">Testing connection...</div>';
+
+            try {
+                const response = await fetch(`${detectedApiUrl.replace('/api/v1', '')}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>✅ SUCCESS!</strong> Backend is reachable<br>
+                            <strong>Status:</strong> ${response.status}<br>
+                            <strong>Response:</strong><br>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>❌ ERROR</strong><br>
+                            <strong>Status:</strong> ${response.status}<br>
+                            <strong>Response:</strong><br>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ CONNECTION FAILED</strong><br>
+                        <strong>Error:</strong> ${error.message}<br>
+                        <strong>API URL being tested:</strong> ${detectedApiUrl}<br><br>
+                        <strong>Possible causes:</strong>
+                        <ul>
+                            <li>Browser has cached HSTS and is forcing HTTPS - follow instructions above to clear HSTS</li>
+                            <li>Browser is blocking mixed content</li>
+                            <li>Backend server is not running on port 5001</li>
+                            <li>Firewall is blocking the connection</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-run test on load
+        window.onload = () => {
+            testBackend();
+        };
+    </script>
+</body>
+</html>
