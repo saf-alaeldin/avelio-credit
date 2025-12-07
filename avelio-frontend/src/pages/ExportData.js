@@ -210,8 +210,6 @@ export default function ExportData() {
     }
   };
 
-<<<<<<< Updated upstream
-=======
   // Cash Closing Functions
   const fetchCashClosingData = async () => {
     try {
@@ -474,7 +472,6 @@ export default function ExportData() {
     }
   };
 
->>>>>>> Stashed changes
   return (
     <div className="export-page">
       <div className="export-header">

@@ -303,8 +303,6 @@ const getPaymentById = async (req, res) => {
   }
 };
 
-<<<<<<< Updated upstream
-=======
 // Generate PDF for a payment receipt
 // Payment PDF generation - matching main receipt format
 const generatePaymentPDF = async (req, res) => {
@@ -719,9 +717,10 @@ const voidPayment = async (req, res) => {
   }
 };
 
->>>>>>> Stashed changes
 module.exports = {
   createPartialPayment,
   getPaymentsByReceipt,
-  getPaymentById
+  getPaymentById,
+  generatePaymentPDF,
+  voidPayment
 };

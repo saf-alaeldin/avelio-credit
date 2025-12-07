@@ -41,16 +41,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     localStorage.getItem('authToken') ||
     sessionStorage.getItem('token');
 
-<<<<<<< Updated upstream
-  // Fetch payment history when modal opens
-  useEffect(() => {
-    if (isOpen && receipt?.id) {
-      fetchPayments();
-    }
-  }, [isOpen, receipt?.id]);
-
-=======
->>>>>>> Stashed changes
   // Fetch payment history
   const fetchPayments = async () => {
     try {
@@ -185,8 +175,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
         throw new Error(data.message || 'Failed to process payment');
       }
 
-<<<<<<< Updated upstream
-=======
       // Update local receipt state with new amounts (create new object to trigger re-render)
       const updatedReceipt = {
         ...localReceipt,
@@ -196,7 +184,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
       };
       setLocalReceipt(updatedReceipt);
 
->>>>>>> Stashed changes
       // Show success
       setSuccess(true);
       setIsProcessingPayment(false);
@@ -242,8 +229,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   };
 
-<<<<<<< Updated upstream
-=======
   // Handle Payment PDF Download
   const handleDownloadPaymentPDF = async (paymentId) => {
     try {
@@ -317,7 +302,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   };
 
->>>>>>> Stashed changes
   // Handle Void Receipt
   const handleVoidReceipt = async () => {
     if (!voidReason.trim()) {
