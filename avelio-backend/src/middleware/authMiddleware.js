@@ -15,14 +15,16 @@ function requireAuth(req, res, next) {
 }
 
 // Middleware to require specific role(s)
-function requireRole(allowedRoles) {
+function requireRole(...allowedRoles) {
+  // Flatten in case an array is passed
+  const roles = allowedRoles.flat();
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const userRole = req.user.role;
-    if (!allowedRoles.includes(userRole)) {
+    if (!roles.includes(userRole)) {
       return res.status(403).json({
         message: 'Access denied. Insufficient permissions.'
       });

@@ -31,10 +31,14 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  if (!isOpen || !receipt) return null;
-
   // Local receipt state to track payment updates
   const [localReceipt, setLocalReceipt] = useState(null);
+
+  // Void payment states
+  const [showVoidPayment, setShowVoidPayment] = useState(false);
+  const [voidPaymentId, setVoidPaymentId] = useState(null);
+  const [voidPaymentReason, setVoidPaymentReason] = useState('');
+  const [isVoidingPayment, setIsVoidingPayment] = useState(false);
 
   const token =
     localStorage.getItem('token') ||
@@ -541,10 +545,13 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
               ) : (
                 <div className="payment-history-list">
                   {payments.map((payment, index) => (
-                    <div key={payment.id} className="payment-history-item">
+                    <div key={payment.id} className={`payment-history-item ${payment.is_void ? 'voided' : ''}`}>
                       <div className="payment-history-header">
                         <span className="payment-history-number">#{index + 1}</span>
-                        <span className="payment-history-amount">${parseFloat(payment.amount).toFixed(2)}</span>
+                        <span className="payment-history-amount">
+                          ${parseFloat(payment.amount).toFixed(2)}
+                          {payment.is_void && <span className="voided-badge">VOIDED</span>}
+                        </span>
                       </div>
                       <div className="payment-history-details">
                         <span>Payment #: {payment.payment_number}</span>
@@ -554,6 +561,20 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
                       </div>
                       {payment.remarks && (
                         <div className="payment-history-remarks">{payment.remarks}</div>
+                      )}
+                      {payment.is_void && payment.void_reason && (
+                        <div className="payment-void-reason">Void reason: {payment.void_reason}</div>
+                      )}
+                      {!payment.is_void && !localReceipt.is_void && (
+                        <button
+                          className="payment-void-btn"
+                          onClick={() => {
+                            setVoidPaymentId(payment.id);
+                            setShowVoidPayment(true);
+                          }}
+                        >
+                          Void Payment
+                        </button>
                       )}
                     </div>
                   ))}
@@ -772,6 +793,79 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
                 disabled={isVoiding || !voidReason.trim()}
               >
                 {isVoiding ? 'Voiding...' : 'Confirm Void Receipt'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Void Payment Confirmation Dialog */}
+      {showVoidPayment && (
+        <div className="modal-backdrop" onClick={() => !isVoidingPayment && setShowVoidPayment(false)}>
+          <div className="modal-container modal-container-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Void Payment</h2>
+              <button
+                className="modal-close-btn"
+                onClick={() => {
+                  setShowVoidPayment(false);
+                  setVoidPaymentId(null);
+                  setVoidPaymentReason('');
+                }}
+                disabled={isVoidingPayment}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="void-warning">
+                <span className="void-warning-icon">⚠️</span>
+                <p>
+                  <strong>Warning:</strong> Voiding this payment will reverse the amount and update the receipt balance.
+                </p>
+              </div>
+
+              <div className="modal-detail-item modal-detail-full">
+                <label className="modal-detail-label">
+                  Reason for Voiding <span style={{color: '#EF4444'}}>*</span>
+                </label>
+                <textarea
+                  className="void-reason-input"
+                  placeholder="Enter reason (e.g., Duplicate payment, Incorrect amount, Refund...)"
+                  value={voidPaymentReason}
+                  onChange={(e) => setVoidPaymentReason(e.target.value)}
+                  rows="3"
+                  disabled={isVoidingPayment}
+                  autoFocus
+                />
+              </div>
+
+              {error && (
+                <div className="modal-error">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => {
+                  setShowVoidPayment(false);
+                  setVoidPaymentId(null);
+                  setVoidPaymentReason('');
+                }}
+                disabled={isVoidingPayment}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={handleVoidPayment}
+                disabled={isVoidingPayment || !voidPaymentReason.trim()}
+              >
+                {isVoidingPayment ? 'Voiding...' : 'Confirm Void Payment'}
               </button>
             </div>
           </div>

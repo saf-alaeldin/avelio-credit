@@ -15,7 +15,14 @@ import TravelAgencies from './pages/TravelAgencies';
 import ExportData from './pages/ExportData';
 import Analytics from './pages/Analytics';
 import Users from './pages/Users';
-import AppHeader from './pages/AppHeader';      
+import AppHeader from './pages/AppHeader';
+
+// Station Settlement pages
+import StationSettlementUnified from './pages/StationSettlementUnified';
+import SettlementReview from './pages/SettlementReview';
+import ExpenseCodesAdmin from './pages/ExpenseCodesAdmin';
+import SalesAgentsAdmin from './pages/SalesAgentsAdmin';
+import StationsAdmin from './pages/StationsAdmin';      
 
 function App() {
   // Use state for authentication to trigger re-renders
@@ -131,6 +138,31 @@ function App() {
             <Route
               path="/users"
               element={isAuthenticated ? <Users /> : <Navigate to="/login" replace />}
+            />
+            {/* Station Settlement routes */}
+            <Route
+              path="/station-settlement"
+              element={isAuthenticated ? <StationSettlementUnified /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/station-settlement/:id"
+              element={isAuthenticated ? <StationSettlementUnified /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/settlements/:id/review"
+              element={isAuthenticated ? <SettlementReview /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/expense-codes"
+              element={isAuthenticated ? <ExpenseCodesAdmin /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/sales-agents"
+              element={isAuthenticated ? <SalesAgentsAdmin /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/stations-admin"
+              element={isAuthenticated ? <StationsAdmin /> : <Navigate to="/login" replace />}
             />
             <Route
               path="*"

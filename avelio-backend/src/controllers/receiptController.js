@@ -4,15 +4,25 @@ const AuditLogger = require('../utils/audit');
 const logger = require('../utils/logger');
 
 // Generate receipt number
-// Format: KU251114-0001 (KU = Kush Air IATA code, YYMMDD = date, 4-digit unique number)
-function generateReceiptNumber(stationCode) {
+// Format: KU251114-0001 (KU = Kush Air IATA code, YYMMDD = date, 4-digit sequential number reset daily)
+async function generateReceiptNumber(stationCode) {
+  // Get current date in Africa/Juba timezone
   const now = new Date();
-  const year = String(now.getFullYear()).slice(-2); // Last 2 digits of year
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+  const jubaDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+  const [yearFull, month, day] = jubaDateStr.split('-');
+  const year = yearFull.slice(-2); // Last 2 digits of year
+  const datePrefix = `KU${year}${month}${day}`;
 
-  return `KU${year}${month}${day}-${random}`;
+  // Count total receipts for today to get next sequence number
+  const result = await db.query(
+    `SELECT COUNT(*) as count FROM receipts
+     WHERE receipt_number LIKE $1`,
+    [`${datePrefix}-%`]
+  );
+
+  const nextSequence = parseInt(result.rows[0].count, 10) + 1;
+  const sequenceStr = String(nextSequence).padStart(4, '0');
+  return `${datePrefix}-${sequenceStr}`;
 }
 
 // CREATE RECEIPT
@@ -110,7 +120,7 @@ const createReceipt = async (req, res) => {
 
     // Generate receipt number
     const stationCode = user.station || user.station_code || 'JUB'; // Fallback to JUB
-    const receiptNumber = generateReceiptNumber(stationCode);
+    const receiptNumber = await generateReceiptNumber(stationCode);
 
     logger.debug('Generating receipt', {
       user_id: user.id,

@@ -53,6 +53,7 @@ export default function AppHeader() {
           <NavLink to="/dashboard"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
           <NavLink to="/receipts"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Receipts</NavLink>
           <NavLink to="/agencies"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Agencies</NavLink>
+          <NavLink to="/station-settlement" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Settlement</NavLink>
           <NavLink to="/export"     className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Export</NavLink>
           <NavLink to="/analytics"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
           {user.role === 'admin' && (
@@ -81,6 +82,16 @@ export default function AppHeader() {
                 {user.email && <div className="dropdown-email">{user.email}</div>}
               </div>
               <Link className="dropdown-item" to="/account" onClick={() => setOpen(false)}>My Account</Link>
+              {(user.role === 'admin' || user.role === 'manager') && (
+                <>
+                  <div className="dropdown-divider"></div>
+                  <div className="dropdown-section">Settlement Admin</div>
+                  <Link className="dropdown-item" to="/stations-admin" onClick={() => setOpen(false)}>Stations</Link>
+                  <Link className="dropdown-item" to="/sales-agents" onClick={() => setOpen(false)}>Sales Agents</Link>
+                  <Link className="dropdown-item" to="/expense-codes" onClick={() => setOpen(false)}>Expense Codes</Link>
+                </>
+              )}
+              <div className="dropdown-divider"></div>
               <button className="dropdown-item dropdown-item--danger" onClick={handleLogout}>Logout</button>
             </div>
           )}

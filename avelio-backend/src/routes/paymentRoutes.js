@@ -15,4 +15,7 @@ router.get('/receipt/:receipt_id', paymentController.getPaymentsByReceipt);
 // GET /api/v1/payments/:id - Get single payment
 router.get('/:id', paymentController.getPaymentById);
 
+// DELETE /api/v1/payments/:id - Void a payment
+router.delete('/:id', paymentController.voidPayment);
+
 module.exports = router;

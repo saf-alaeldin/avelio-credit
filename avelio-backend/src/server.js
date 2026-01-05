@@ -138,6 +138,13 @@ const agencyRoutes = require('./routes/agencyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 
+// Station Settlement routes
+const stationRoutes = require('./routes/stationRoutes');
+const salesAgentRoutes = require('./routes/salesAgentRoutes');
+const expenseCodeRoutes = require('./routes/expenseCodeRoutes');
+const stationSalesRoutes = require('./routes/stationSalesRoutes');
+const settlementRoutes = require('./routes/settlementRoutes');
+
 
 
 // Use routes (auth has stricter rate limiting)
@@ -149,6 +156,13 @@ app.use('/api/v1/export', exportRoutes);
 app.use('/api/v1/agencies', agencyRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+
+// Station Settlement routes
+app.use('/api/v1/stations', stationRoutes);
+app.use('/api/v1/sales-agents', salesAgentRoutes);
+app.use('/api/v1/expense-codes', expenseCodeRoutes);
+app.use('/api/v1/station-sales', stationSalesRoutes);
+app.use('/api/v1/settlements', settlementRoutes);
 
 // 404 handler
 app.use((req, res) => {

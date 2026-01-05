@@ -107,7 +107,14 @@ export default function ExportData() {
 
       // Fetch data
       const queryString = new URLSearchParams(params).toString();
-      const data = await apiGet(`/receipts${queryString ? `?${queryString}` : ''}`);
+      const url = `${API_BASE}/receipts${queryString ? `?${queryString}` : ''}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch receipts');
+      }
+      const data = await res.json();
       const receipts = data?.data?.receipts || data?.receipts || [];
 
       if (receipts.length === 0) {
