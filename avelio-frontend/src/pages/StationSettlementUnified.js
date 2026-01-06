@@ -841,6 +841,7 @@ export default function StationSettlementUnified() {
       {showAddSaleModal && (
         <AddSaleModal
           stationId={stationId}
+          station={selectedStation}
           agents={agents}
           onClose={() => setShowAddSaleModal(false)}
           onSuccess={() => {

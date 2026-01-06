@@ -49,7 +49,15 @@
       "Bash(node src/server.js:*)",
       "Bash(git add:*)",
       "Bash(del nul)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(./start-dev.sh)",
+      "Bash(lsof:*)",
+      "Bash(npm install)",
+      "Bash(/Users/mohamedsaeed/avelio-credit/start-dev.sh:*)",
+      "Bash(psql:*)",
+      "Bash(/Users/mohamedsaeed/avelio-credit/stop-servers.sh)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

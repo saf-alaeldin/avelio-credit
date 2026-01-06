@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const { generateSummaryPDF } = require('../utils/summaryPdfGenerator');
+const { generateSalesSettlementsReport } = require('../utils/salesSettlementsReportGenerator');
+const logger = require('../utils/logger');
 
 // Export receipts to CSV
 const exportToCSV = async (req, res) => {
@@ -483,10 +485,233 @@ const getCashClosingData = async (req, res) => {
   }
 };
 
+// Export comprehensive sales and settlements report
+const exportSalesSettlementsReport = async (req, res) => {
+  try {
+    const { year, month, period = 'monthly' } = req.query;
+
+    // Default to current month
+    const now = new Date();
+    const targetYear = year || now.getFullYear();
+    const targetMonth = month || (now.getMonth() + 1);
+
+    // Calculate date range
+    const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+    const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
+
+    logger.info(`Generating sales & settlements report for ${startDate} to ${endDate}`);
+
+    // Fetch station sales data
+    const salesQuery = `
+      SELECT
+        ss.id,
+        ss.sale_reference,
+        ss.transaction_date,
+        ss.amount,
+        ss.currency,
+        ss.point_of_sale,
+        st.station_code,
+        st.station_name,
+        sa.agent_code,
+        sa.agent_name,
+        sa.point_of_sale as agent_pos,
+        ss.settlement_id
+      FROM station_sales ss
+      JOIN stations st ON ss.station_id = st.id
+      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id
+      WHERE ss.transaction_date >= $1 AND ss.transaction_date <= $2
+      ORDER BY ss.transaction_date DESC
+    `;
+
+    const salesResult = await db.query(salesQuery, [startDate, endDate]);
+    const sales = salesResult.rows;
+
+    // Fetch settlements data
+    const settlementsQuery = `
+      SELECT
+        s.id,
+        s.settlement_number,
+        s.period_from,
+        s.period_to,
+        s.status,
+        st.station_code,
+        st.station_name,
+        s.created_at,
+        COALESCE(SUM(CASE WHEN sum.currency = 'USD' THEN sum.expected_cash ELSE 0 END), 0) as total_sales_usd,
+        COALESCE(SUM(CASE WHEN sum.currency = 'SSP' THEN sum.expected_cash ELSE 0 END), 0) as total_sales_ssp
+      FROM settlements s
+      JOIN stations st ON s.station_id = st.id
+      LEFT JOIN settlement_summaries sum ON s.id = sum.settlement_id
+      WHERE s.period_from <= $2 AND s.period_to >= $1
+      GROUP BY s.id, s.settlement_number, s.period_from, s.period_to, s.status, st.station_code, st.station_name, s.created_at
+      ORDER BY s.period_to DESC
+    `;
+
+    const settlementsResult = await db.query(settlementsQuery, [startDate, endDate]);
+    const settlements = settlementsResult.rows;
+
+    // Calculate analytics
+    const analytics = {
+      totalSales: sales.length,
+      totalSettlements: settlements.length,
+      totalRevenue: sales.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0),
+      settlementsApproved: settlements.filter(s => s.status === 'APPROVED').length,
+
+      // By currency
+      byCurrency: [],
+
+      // By station
+      byStation: [],
+
+      // Settlement status
+      settlementStatus: {
+        draft: settlements.filter(s => s.status === 'DRAFT').length,
+        submitted: settlements.filter(s => s.status === 'SUBMITTED').length,
+        approved: settlements.filter(s => s.status === 'APPROVED').length,
+        rejected: settlements.filter(s => s.status === 'REJECTED').length
+      },
+
+      // Top agents
+      topAgents: [],
+
+      // Juba Point of Sale
+      jubaPointOfSale: [],
+
+      // Active stations and agents
+      activeStations: 0,
+      activeAgents: 0,
+      avgTransaction: 0
+    };
+
+    // Calculate by currency
+    const currencyMap = {};
+    sales.forEach(s => {
+      const curr = s.currency || 'USD';
+      if (!currencyMap[curr]) {
+        currencyMap[curr] = 0;
+      }
+      currencyMap[curr] += parseFloat(s.amount || 0);
+    });
+    analytics.byCurrency = Object.keys(currencyMap).map(currency => ({
+      currency,
+      total: currencyMap[currency]
+    }));
+
+    // Calculate by station
+    const stationMapQuery = `
+      SELECT
+        st.station_code,
+        st.station_name,
+        COUNT(ss.id) as sales_count,
+        SUM(ss.amount) as total_amount,
+        COUNT(DISTINCT ss.agent_id) as agent_count
+      FROM stations st
+      LEFT JOIN station_sales ss ON st.id = ss.station_id
+        AND ss.transaction_date >= $1 AND ss.transaction_date <= $2
+      GROUP BY st.id, st.station_code, st.station_name
+      ORDER BY total_amount DESC NULLS LAST
+    `;
+    const stationResult = await db.query(stationMapQuery, [startDate, endDate]);
+    analytics.byStation = stationResult.rows.map(row => ({
+      station_code: row.station_code,
+      station_name: row.station_name,
+      sales_count: parseInt(row.sales_count) || 0,
+      total_amount: parseFloat(row.total_amount) || 0,
+      agent_count: parseInt(row.agent_count) || 0
+    }));
+
+    analytics.activeStations = analytics.byStation.filter(s => s.sales_count > 0).length;
+
+    // Calculate top agents
+    const topAgentsQuery = `
+      SELECT
+        sa.agent_code,
+        sa.agent_name,
+        st.station_code,
+        COUNT(ss.id) as sales_count,
+        SUM(ss.amount) as total_amount
+      FROM sales_agents sa
+      LEFT JOIN station_sales ss ON sa.id = ss.agent_id
+        AND ss.transaction_date >= $1 AND ss.transaction_date <= $2
+      LEFT JOIN stations st ON sa.station_id = st.id
+      WHERE ss.id IS NOT NULL
+      GROUP BY sa.id, sa.agent_code, sa.agent_name, st.station_code
+      ORDER BY total_amount DESC
+      LIMIT 10
+    `;
+    const topAgentsResult = await db.query(topAgentsQuery, [startDate, endDate]);
+    analytics.topAgents = topAgentsResult.rows.map(row => ({
+      agent_code: row.agent_code,
+      agent_name: row.agent_name,
+      station_code: row.station_code,
+      sales_count: parseInt(row.sales_count) || 0,
+      total_amount: parseFloat(row.total_amount) || 0
+    }));
+
+    analytics.activeAgents = analytics.topAgents.length;
+
+    // Calculate Juba Point of Sale breakdown
+    const jubaQuery = `
+      SELECT
+        ss.point_of_sale,
+        COUNT(ss.id) as sales_count,
+        SUM(ss.amount) as total_amount
+      FROM station_sales ss
+      JOIN stations st ON ss.station_id = st.id
+      WHERE st.station_code = 'JUB'
+        AND ss.point_of_sale IS NOT NULL
+        AND ss.transaction_date >= $1 AND ss.transaction_date <= $2
+      GROUP BY ss.point_of_sale
+      ORDER BY total_amount DESC
+    `;
+    const jubaResult = await db.query(jubaQuery, [startDate, endDate]);
+    analytics.jubaPointOfSale = jubaResult.rows.map(row => ({
+      point_of_sale: row.point_of_sale,
+      sales_count: parseInt(row.sales_count) || 0,
+      total_amount: parseFloat(row.total_amount) || 0
+    }));
+
+    // Calculate average transaction
+    if (sales.length > 0) {
+      analytics.avgTransaction = analytics.totalRevenue / sales.length;
+    }
+
+    // Format period label
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${months[targetMonth - 1]} ${targetYear}`;
+
+    // Generate PDF
+    const pdfBuffer = await generateSalesSettlementsReport({
+      sales,
+      settlements,
+      analytics,
+      period,
+      periodLabel
+    });
+
+    // Send PDF
+    const filename = `sales-settlements-report-${targetYear}-${String(targetMonth).padStart(2, '0')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+
+    logger.info(`Sales & Settlements report generated successfully: ${filename}`);
+
+  } catch (error) {
+    logger.error('Sales & Settlements report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate sales & settlements report'
+    });
+  }
+};
+
 module.exports = {
   exportToCSV,
   exportSummaryCSV,
   exportDailySummaryPDF,
   exportMonthlySummaryPDF,
-  getCashClosingData
+  getCashClosingData,
+  exportSalesSettlementsReport
 };

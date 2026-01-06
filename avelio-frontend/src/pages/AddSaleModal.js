@@ -12,27 +12,56 @@ const getApiUrl = () => {
 
 const API_BASE = getApiUrl();
 
-export default function AddSaleModal({ stationId, agents, onClose, onSuccess }) {
+// Point of Sales for Juba station
+const JUBA_POS_OPTIONS = [
+  'Kushair Head Office',
+  'Airport I',
+  'Airport II',
+  'Juba Market Office',
+  'Kushair Traffic'
+];
+
+export default function AddSaleModal({ stationId, station, agents, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     agent_id: '',
+    point_of_sale: '',
     date_to: new Date().toISOString().split('T')[0],
     date_from: new Date().toISOString().split('T')[0],
     flight_reference: '',
     amount: '',
-    currency: 'USD',
-    customer_name: '',
-    description: ''
+    currency: 'USD'
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
+  // Check if selected station is Juba
+  const isJubaStation = station?.station_code === 'JUB';
+
+  // Filter agents by point of sale for Juba station
+  const filteredAgents = isJubaStation && formData.point_of_sale
+    ? agents.filter(a => a.point_of_sale === formData.point_of_sale)
+    : agents;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.agent_id || !formData.amount || !formData.date_to || !formData.date_from) {
+    // Validate required fields
+    if (!formData.amount || !formData.date_to || !formData.date_from) {
       setError('Please fill in all required fields');
+      return;
+    }
+
+    // Agent is mandatory only for Juba station
+    if (isJubaStation && !formData.agent_id) {
+      setError('Agent is required for Juba station');
+      return;
+    }
+
+    // Point of Sale is mandatory for Juba station
+    if (isJubaStation && !formData.point_of_sale) {
+      setError('Point of Sale is required for Juba station');
       return;
     }
 
@@ -80,19 +109,39 @@ export default function AddSaleModal({ stationId, agents, onClose, onSuccess }) 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             <div className="form-grid">
+              {isJubaStation && (
+                <div className="form-group">
+                  <label>Point of Sale *</label>
+                  <select
+                    value={formData.point_of_sale}
+                    onChange={(e) => setFormData({ ...formData, point_of_sale: e.target.value, agent_id: '' })}
+                    required
+                  >
+                    <option value="">Select Point of Sale</option>
+                    {JUBA_POS_OPTIONS.map(pos => (
+                      <option key={pos} value={pos}>{pos}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="form-group">
-                <label>Agent *</label>
+                <label>Agent {isJubaStation ? '*' : '(Optional)'}</label>
                 <select
                   value={formData.agent_id}
                   onChange={(e) => setFormData({ ...formData, agent_id: e.target.value })}
-                  required
+                  required={isJubaStation}
+                  disabled={isJubaStation && !formData.point_of_sale}
                 >
-                  <option value="">Select Agent</option>
-                  {agents.map(a => (
+                  <option value="">
+                    {isJubaStation && !formData.point_of_sale ? 'First select Point of Sale' : 'Select Agent'}
+                  </option>
+                  {filteredAgents.map(a => (
                     <option key={a.id} value={a.id}>{a.agent_code} - {a.agent_name}</option>
                   ))}
                 </select>
               </div>
+
               <div className="form-group">
                 <label>To *</label>
                 <input
@@ -138,22 +187,6 @@ export default function AddSaleModal({ stationId, agents, onClose, onSuccess }) 
                   value={formData.flight_reference}
                   onChange={(e) => setFormData({ ...formData, flight_reference: e.target.value })}
                   placeholder="e.g., KU123"
-                />
-              </div>
-              <div className="form-group">
-                <label>Customer Name</label>
-                <input
-                  type="text"
-                  value={formData.customer_name}
-                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                />
-              </div>
-              <div className="form-group full-width">
-                <label>Description</label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
             </div>

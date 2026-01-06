@@ -34,7 +34,7 @@ const getStationSales = async (req, res) => {
              u.name as created_by_name
       FROM station_sales ss
       JOIN stations st ON ss.station_id = st.id
-      JOIN sales_agents sa ON ss.agent_id = sa.id
+      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id
       LEFT JOIN users u ON ss.created_by = u.id
       WHERE 1=1
     `;
@@ -110,6 +110,7 @@ const getStationSales = async (req, res) => {
           agent_id: s.agent_id,
           agent_code: s.agent_code,
           agent_name: s.agent_name,
+          point_of_sale: s.point_of_sale,
           transaction_date: s.transaction_date,
           transaction_time: s.transaction_time,
           flight_reference: s.flight_reference,
@@ -152,7 +153,7 @@ const getUnsettledSales = async (req, res) => {
              sa.agent_code, sa.agent_name
       FROM station_sales ss
       JOIN stations st ON ss.station_id = st.id
-      JOIN sales_agents sa ON ss.agent_id = sa.id
+      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id
       WHERE ss.station_id = $1
         AND ss.transaction_date >= $2
         AND ss.transaction_date <= $3
@@ -216,7 +217,7 @@ const getSaleById = async (req, res) => {
               u.name as created_by_name
        FROM station_sales ss
        JOIN stations st ON ss.station_id = st.id
-       JOIN sales_agents sa ON ss.agent_id = sa.id
+       LEFT JOIN sales_agents sa ON ss.agent_id = sa.id
        LEFT JOIN users u ON ss.created_by = u.id
        WHERE ss.id = $1`,
       [id]
@@ -248,6 +249,7 @@ const createSale = async (req, res) => {
     const {
       station_id,
       agent_id,
+      point_of_sale,
       transaction_date,
       transaction_time,
       flight_reference,
@@ -261,10 +263,10 @@ const createSale = async (req, res) => {
     const userId = req.user.id;
 
     // Validation
-    if (!station_id || !agent_id || !transaction_date || !amount || !currency) {
+    if (!station_id || !transaction_date || !amount || !currency) {
       return res.status(400).json({
         success: false,
-        message: 'station_id, agent_id, transaction_date, amount, and currency are required'
+        message: 'station_id, transaction_date, amount, and currency are required'
       });
     }
 
@@ -275,8 +277,8 @@ const createSale = async (req, res) => {
       });
     }
 
-    // Verify station exists
-    const stationCheck = await db.query('SELECT id FROM stations WHERE id = $1', [station_id]);
+    // Verify station exists and get station details
+    const stationCheck = await db.query('SELECT id, station_code FROM stations WHERE id = $1', [station_id]);
     if (stationCheck.rows.length === 0) {
       return res.status(400).json({
         success: false,
@@ -284,13 +286,34 @@ const createSale = async (req, res) => {
       });
     }
 
-    // Verify agent exists
-    const agentCheck = await db.query('SELECT id FROM sales_agents WHERE id = $1', [agent_id]);
-    if (agentCheck.rows.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Sales agent not found'
-      });
+    const station = stationCheck.rows[0];
+    const isJubaStation = station.station_code === 'JUB';
+
+    // For Juba station, agent_id and point_of_sale are required
+    if (isJubaStation) {
+      if (!agent_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Agent is required for Juba station'
+        });
+      }
+      if (!point_of_sale) {
+        return res.status(400).json({
+          success: false,
+          message: 'Point of Sale is required for Juba station'
+        });
+      }
+    }
+
+    // Verify agent exists (if agent_id is provided)
+    if (agent_id) {
+      const agentCheck = await db.query('SELECT id FROM sales_agents WHERE id = $1', [agent_id]);
+      if (agentCheck.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Sales agent not found'
+        });
+      }
     }
 
     // Generate or validate sale reference
@@ -310,14 +333,15 @@ const createSale = async (req, res) => {
 
     const result = await db.query(
       `INSERT INTO station_sales
-       (sale_reference, station_id, agent_id, transaction_date, transaction_time,
+       (sale_reference, station_id, agent_id, point_of_sale, transaction_date, transaction_time,
         flight_reference, amount, currency, payment_method, customer_name, description, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         finalReference,
         station_id,
-        agent_id,
+        agent_id || null,
+        point_of_sale || null,
         transaction_date,
         transaction_time || null,
         flight_reference || null,
@@ -337,7 +361,7 @@ const createSale = async (req, res) => {
               sa.agent_code, sa.agent_name
        FROM station_sales ss
        JOIN stations st ON ss.station_id = st.id
-       JOIN sales_agents sa ON ss.agent_id = sa.id
+       LEFT JOIN sales_agents sa ON ss.agent_id = sa.id
        WHERE ss.id = $1`,
       [result.rows[0].id]
     );

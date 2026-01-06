@@ -13,6 +13,15 @@ const getApiUrl = () => {
 
 const API_BASE = getApiUrl();
 
+// Point of Sales for Juba station
+const JUBA_POS_OPTIONS = [
+  'Kushair Head Office',
+  'Airport I',
+  'Airport II',
+  'Juba Market Office',
+  'Kushair Traffic'
+];
+
 export default function SalesAgentsAdmin() {
   const [agents, setAgents] = useState([]);
   const [stations, setStations] = useState([]);
@@ -30,7 +39,8 @@ export default function SalesAgentsAdmin() {
   const [formData, setFormData] = useState({
     agent_code: '',
     agent_name: '',
-    station_id: ''
+    station_id: '',
+    point_of_sale: ''
   });
 
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -84,7 +94,8 @@ export default function SalesAgentsAdmin() {
     setFormData({
       agent_code: '',
       agent_name: '',
-      station_id: ''
+      station_id: '',
+      point_of_sale: ''
     });
     setEditingAgent(null);
     setShowForm(false);
@@ -94,7 +105,8 @@ export default function SalesAgentsAdmin() {
     setFormData({
       agent_code: agent.agent_code,
       agent_name: agent.agent_name,
-      station_id: agent.station_id || ''
+      station_id: agent.station_id || '',
+      point_of_sale: agent.point_of_sale || ''
     });
     setEditingAgent(agent);
     setShowForm(true);
@@ -233,7 +245,7 @@ export default function SalesAgentsAdmin() {
                 <label>Station</label>
                 <select
                   value={formData.station_id}
-                  onChange={(e) => setFormData({ ...formData, station_id: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, station_id: e.target.value, point_of_sale: '' })}
                 >
                   <option value="">-- Select Station --</option>
                   {stations.map(station => (
@@ -243,6 +255,20 @@ export default function SalesAgentsAdmin() {
                   ))}
                 </select>
               </div>
+              {formData.station_id && stations.find(s => s.id === formData.station_id)?.station_code === 'JUB' && (
+                <div className="form-group">
+                  <label>Point of Sale {formData.station_id && stations.find(s => s.id === formData.station_id)?.station_code === 'JUB' ? '*' : ''}</label>
+                  <select
+                    value={formData.point_of_sale}
+                    onChange={(e) => setFormData({ ...formData, point_of_sale: e.target.value })}
+                  >
+                    <option value="">-- Select Point of Sale --</option>
+                    {JUBA_POS_OPTIONS.map(pos => (
+                      <option key={pos} value={pos}>{pos}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="button" className="btn-secondary" onClick={resetForm}>
@@ -264,6 +290,7 @@ export default function SalesAgentsAdmin() {
               <th>Code</th>
               <th>Name</th>
               <th>Station</th>
+              <th>Point of Sale</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -271,7 +298,7 @@ export default function SalesAgentsAdmin() {
           <tbody>
             {agents.length === 0 ? (
               <tr>
-                <td colSpan="5" className="empty-row">No agents found</td>
+                <td colSpan="6" className="empty-row">No agents found</td>
               </tr>
             ) : (
               agents.map(agent => (
@@ -279,6 +306,7 @@ export default function SalesAgentsAdmin() {
                   <td className="code-cell">{agent.agent_code}</td>
                   <td>{agent.agent_name}</td>
                   <td>{getStationName(agent.station_id)}</td>
+                  <td>{agent.point_of_sale || '-'}</td>
                   <td>
                     <span className={`status-badge ${agent.is_active ? 'active' : 'inactive'}`}>
                       {agent.is_active ? 'Active' : 'Inactive'}

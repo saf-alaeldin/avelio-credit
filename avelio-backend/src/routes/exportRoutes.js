@@ -21,4 +21,7 @@ router.get('/monthly-summary', exportController.exportMonthlySummaryPDF);
 // GET /api/v1/export/cash-closing - Get cash closing data for reports
 router.get('/cash-closing', exportController.getCashClosingData);
 
+// GET /api/v1/export/sales-settlements - Export comprehensive sales and settlements report as PDF
+router.get('/sales-settlements', exportController.exportSalesSettlementsReport);
+
 module.exports = router;

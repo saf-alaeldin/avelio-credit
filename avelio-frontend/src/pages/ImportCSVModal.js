@@ -43,9 +43,7 @@ export default function ImportCSVModal({ stationId, onClose, onSuccess }) {
         transaction_time: sale.transaction_time || sale.time,
         flight_reference: sale.flight_reference || sale.flight,
         amount: sale.amount,
-        currency: sale.currency || 'USD',
-        customer_name: sale.customer_name || sale.customer,
-        description: sale.description || sale.remarks
+        currency: sale.currency || 'USD'
       });
     }
 
@@ -113,7 +111,7 @@ export default function ImportCSVModal({ stationId, onClose, onSuccess }) {
 
           <p className="import-hint">
             Paste CSV data with columns: agent_code, transaction_date, amount, currency (optional),
-            flight_reference (optional), customer_name (optional)
+            flight_reference (optional)
           </p>
 
           <textarea

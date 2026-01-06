@@ -39,6 +39,7 @@ const getSalesAgents = async (req, res) => {
           station_id: a.station_id,
           station_code: a.station_code,
           station_name: a.station_name,
+          point_of_sale: a.point_of_sale,
           is_active: a.is_active,
           created_at: a.created_at
         }))
@@ -89,7 +90,7 @@ const getSalesAgentById = async (req, res) => {
 // CREATE sales agent
 const createSalesAgent = async (req, res) => {
   try {
-    const { agent_code, agent_name, station_id } = req.body;
+    const { agent_code, agent_name, station_id, point_of_sale } = req.body;
 
     if (!agent_code || !agent_name) {
       return res.status(400).json({
@@ -126,10 +127,10 @@ const createSalesAgent = async (req, res) => {
     }
 
     const result = await db.query(
-      `INSERT INTO sales_agents (agent_code, agent_name, station_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO sales_agents (agent_code, agent_name, station_id, point_of_sale)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [agent_code.toUpperCase(), agent_name, station_id || null]
+      [agent_code.toUpperCase(), agent_name, station_id || null, point_of_sale || null]
     );
 
     // Get station info for response
@@ -159,7 +160,7 @@ const createSalesAgent = async (req, res) => {
 const updateSalesAgent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { agent_name, station_id, is_active } = req.body;
+    const { agent_name, station_id, point_of_sale, is_active } = req.body;
 
     const existing = await db.query(
       'SELECT id FROM sales_agents WHERE id = $1',
@@ -191,11 +192,12 @@ const updateSalesAgent = async (req, res) => {
       `UPDATE sales_agents
        SET agent_name = COALESCE($1, agent_name),
            station_id = COALESCE($2, station_id),
-           is_active = COALESCE($3, is_active),
+           point_of_sale = COALESCE($3, point_of_sale),
+           is_active = COALESCE($4, is_active),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4
+       WHERE id = $5
        RETURNING *`,
-      [agent_name, station_id, is_active, id]
+      [agent_name, station_id, point_of_sale, is_active, id]
     );
 
     // Get station info for response
@@ -311,13 +313,14 @@ const importSalesAgents = async (req, res) => {
           }
 
           const result = await client.query(
-            `INSERT INTO sales_agents (agent_code, agent_name, station_id)
-             VALUES ($1, $2, $3)
+            `INSERT INTO sales_agents (agent_code, agent_name, station_id, point_of_sale)
+             VALUES ($1, $2, $3, $4)
              RETURNING *`,
             [
               agent.agent_code.toUpperCase(),
               agent.agent_name,
-              agent.station_id || station_id || null
+              agent.station_id || station_id || null,
+              agent.point_of_sale || null
             ]
           );
 
