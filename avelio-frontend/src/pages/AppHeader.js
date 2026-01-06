@@ -54,6 +54,9 @@ export default function AppHeader() {
           <NavLink to="/receipts"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Receipts</NavLink>
           <NavLink to="/agencies"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Agencies</NavLink>
           <NavLink to="/station-settlement" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Settlement</NavLink>
+          {(user.role === 'admin' || user.role === 'manager') && (
+            <NavLink to="/hq-settlement" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>HQ Settlement</NavLink>
+          )}
           <NavLink to="/export"     className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Export</NavLink>
           <NavLink to="/analytics"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
           {user.role === 'admin' && (

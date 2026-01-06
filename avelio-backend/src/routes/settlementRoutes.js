@@ -24,6 +24,9 @@ router.post('/', requireAuth, settlementController.createSettlement);
 // UPDATE declared cash for agent entry
 router.put('/:id/agents/:agentEntryId', requireAuth, settlementController.updateAgentDeclaredCash);
 
+// UPDATE station declared cash (for verification against agent total)
+router.put('/:id/station-cash', requireAuth, settlementController.updateStationDeclaredCash);
+
 // ADD expense to settlement
 router.post('/:id/expenses', requireAuth, settlementController.addExpense);
 
@@ -45,7 +48,7 @@ router.post('/:id/reject', requireAuth, requireRole('manager', 'admin'), settlem
 // CLOSE settlement (APPROVED -> CLOSED) - admin only
 router.post('/:id/close', requireAuth, requireRole('admin'), settlementController.closeSettlement);
 
-// DELETE settlement (DRAFT only)
-router.delete('/:id', requireAuth, settlementController.deleteSettlement);
+// DELETE settlement - admin only
+router.delete('/:id', requireAuth, requireRole('admin'), settlementController.deleteSettlement);
 
 module.exports = router;

@@ -22,7 +22,8 @@ import StationSettlementUnified from './pages/StationSettlementUnified';
 import SettlementReview from './pages/SettlementReview';
 import ExpenseCodesAdmin from './pages/ExpenseCodesAdmin';
 import SalesAgentsAdmin from './pages/SalesAgentsAdmin';
-import StationsAdmin from './pages/StationsAdmin';      
+import StationsAdmin from './pages/StationsAdmin';
+import HQSettlement from './pages/HQSettlement';      
 
 function App() {
   // Use state for authentication to trigger re-renders
@@ -163,6 +164,15 @@ function App() {
             <Route
               path="/stations-admin"
               element={isAuthenticated ? <StationsAdmin /> : <Navigate to="/login" replace />}
+            />
+            {/* HQ Settlement routes */}
+            <Route
+              path="/hq-settlement"
+              element={isAuthenticated ? <HQSettlement /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/hq-settlement/:id"
+              element={isAuthenticated ? <HQSettlement /> : <Navigate to="/login" replace />}
             />
             <Route
               path="*"

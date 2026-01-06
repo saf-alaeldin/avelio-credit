@@ -186,13 +186,23 @@ async function calculateSettlementSummary(client, settlementId) {
       }
     }
 
-    // Upsert summary
+    // Get existing station_declared_cash (preserve it if already set)
+    const existingSummary = await client.query(
+      `SELECT station_declared_cash FROM settlement_summaries
+       WHERE settlement_id = $1 AND currency = $2`,
+      [settlementId, currency]
+    );
+    const existingStationCash = existingSummary.rows.length > 0
+      ? existingSummary.rows[0].station_declared_cash
+      : null;
+
+    // Upsert summary (agent_cash_total = actualCashReceived, which is sum of declared_cash)
     await client.query(
       `INSERT INTO settlement_summaries
        (settlement_id, currency, opening_balance, opening_balance_settlement_id,
         expected_cash, total_expenses, expected_net_cash, actual_cash_received,
-        final_variance, variance_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        final_variance, variance_status, agent_cash_total, station_declared_cash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (settlement_id, currency)
        DO UPDATE SET
          opening_balance = EXCLUDED.opening_balance,
@@ -203,6 +213,7 @@ async function calculateSettlementSummary(client, settlementId) {
          actual_cash_received = EXCLUDED.actual_cash_received,
          final_variance = EXCLUDED.final_variance,
          variance_status = EXCLUDED.variance_status,
+         agent_cash_total = EXCLUDED.agent_cash_total,
          updated_at = CURRENT_TIMESTAMP`,
       [
         settlementId,
@@ -214,7 +225,9 @@ async function calculateSettlementSummary(client, settlementId) {
         expectedNetCash,
         actualCashReceived,
         finalVariance,
-        varianceStatus
+        varianceStatus,
+        actualCashReceived, // agent_cash_total = sum of declared_cash
+        existingStationCash // preserve existing station_declared_cash
       ]
     );
   }
@@ -339,9 +352,9 @@ const getSettlementById = async (req, res) => {
     const agentEntries = await db.query(
       `SELECT sae.*, sa.agent_code, sa.agent_name
        FROM settlement_agent_entries sae
-       JOIN sales_agents sa ON sae.agent_id = sa.id
+       LEFT JOIN sales_agents sa ON sae.agent_id = sa.id
        WHERE sae.settlement_id = $1
-       ORDER BY sa.agent_name, sae.currency`,
+       ORDER BY sa.agent_name NULLS LAST, sae.currency`,
       [id]
     );
 
@@ -491,7 +504,7 @@ const createSettlement = async (req, res) => {
       const agentEntries = await db.query(
         `SELECT sae.*, sa.agent_code, sa.agent_name
          FROM settlement_agent_entries sae
-         JOIN sales_agents sa ON sae.agent_id = sa.id
+         LEFT JOIN sales_agents sa ON sae.agent_id = sa.id
          WHERE sae.settlement_id = $1`,
         [settlement.id]
       );
@@ -615,7 +628,7 @@ const updateAgentDeclaredCash = async (req, res) => {
       const updated = await db.query(
         `SELECT sae.*, sa.agent_code, sa.agent_name
          FROM settlement_agent_entries sae
-         JOIN sales_agents sa ON sae.agent_id = sa.id
+         LEFT JOIN sales_agents sa ON sae.agent_id = sa.id
          WHERE sae.id = $1`,
         [agentEntryId]
       );
@@ -889,20 +902,9 @@ const submitSettlement = async (req, res) => {
         });
       }
 
-      // Check if all agent entries have declared cash
-      const pendingCheck = await client.query(
-        `SELECT COUNT(*) FROM settlement_agent_entries
-         WHERE settlement_id = $1 AND declared_cash IS NULL`,
-        [id]
-      );
-
-      if (parseInt(pendingCheck.rows[0].count) > 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'All agent entries must have declared cash before submitting'
-        });
-      }
+      // Note: Agent declared cash verification has been removed
+      // Settlements can be submitted without all agent entries having declared cash
+      // The variance will be calculated based on whatever values are provided
 
       // Recalculate summary before submission
       await calculateSettlementSummary(client, id);
@@ -1251,7 +1253,7 @@ const deleteSettlement = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Verify settlement exists and is in DRAFT status
+      // Verify settlement exists
       const settlement = await client.query(
         'SELECT * FROM settlements WHERE id = $1',
         [id]
@@ -1265,13 +1267,13 @@ const deleteSettlement = async (req, res) => {
         });
       }
 
-      if (settlement.rows[0].status !== 'DRAFT') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'Can only delete DRAFT settlements'
-        });
-      }
+      const settlementData = settlement.rows[0];
+
+      // Delete related records first (in case cascade doesn't work)
+      await client.query('DELETE FROM settlement_audit_logs WHERE settlement_id = $1', [id]);
+      await client.query('DELETE FROM settlement_agent_entries WHERE settlement_id = $1', [id]);
+      await client.query('DELETE FROM settlement_expenses WHERE settlement_id = $1', [id]);
+      await client.query('DELETE FROM settlement_summaries WHERE settlement_id = $1', [id]);
 
       // Unlink sales from this settlement
       await client.query(
@@ -1279,14 +1281,20 @@ const deleteSettlement = async (req, res) => {
         [id]
       );
 
-      // Delete settlement (cascades to entries, expenses, summaries, audit logs)
+      // Delete settlement
       await client.query('DELETE FROM settlements WHERE id = $1', [id]);
 
       await client.query('COMMIT');
 
+      logger.info('Settlement deleted by admin', {
+        settlementId: id,
+        settlementNumber: settlementData.settlement_number,
+        deletedBy: userId
+      });
+
       res.json({
         success: true,
-        message: 'Settlement deleted successfully'
+        message: `Settlement ${settlementData.settlement_number} deleted successfully`
       });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1413,7 +1421,7 @@ const getSettlementAgents = async (req, res) => {
     let query = `
       SELECT sae.*, sa.agent_code, sa.agent_name
       FROM settlement_agent_entries sae
-      JOIN sales_agents sa ON sae.agent_id = sa.id
+      LEFT JOIN sales_agents sa ON sae.agent_id = sa.id
       WHERE sae.settlement_id = $1
     `;
     const params = [id];
@@ -1423,7 +1431,7 @@ const getSettlementAgents = async (req, res) => {
       params.push(currency);
     }
 
-    query += ' ORDER BY sa.agent_name, sae.currency';
+    query += ' ORDER BY sa.agent_name NULLS LAST, sae.currency';
 
     const result = await db.query(query, params);
 
@@ -1480,11 +1488,126 @@ const getSettlementExpenses = async (req, res) => {
   }
 };
 
+// UPDATE station declared cash (for verification against agent total)
+const updateStationDeclaredCash = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currency, station_declared_cash } = req.body;
+    const userId = req.user.id;
+
+    if (!currency) {
+      return res.status(400).json({
+        success: false,
+        message: 'Currency is required'
+      });
+    }
+
+    if (station_declared_cash === undefined || station_declared_cash === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'station_declared_cash is required'
+      });
+    }
+
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Verify settlement exists and is in DRAFT status
+      const settlement = await client.query(
+        'SELECT status FROM settlements WHERE id = $1',
+        [id]
+      );
+
+      if (settlement.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Settlement not found'
+        });
+      }
+
+      if (settlement.rows[0].status !== 'DRAFT') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Can only update station declared cash on DRAFT settlements'
+        });
+      }
+
+      // Get current value for audit log
+      const currentSummary = await client.query(
+        `SELECT station_declared_cash FROM settlement_summaries
+         WHERE settlement_id = $1 AND currency = $2`,
+        [id, currency]
+      );
+
+      if (currentSummary.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Settlement summary not found for this currency'
+        });
+      }
+
+      const oldValue = currentSummary.rows[0].station_declared_cash;
+
+      // Update station_declared_cash (the trigger will calculate cash_match_status)
+      await client.query(
+        `UPDATE settlement_summaries
+         SET station_declared_cash = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE settlement_id = $2 AND currency = $3`,
+        [parseFloat(station_declared_cash), id, currency]
+      );
+
+      // Log action
+      await logSettlementAction(
+        client,
+        id,
+        userId,
+        'UPDATE_STATION_CASH',
+        `station_declared_cash_${currency}`,
+        { station_declared_cash: oldValue },
+        { station_declared_cash: parseFloat(station_declared_cash) },
+        `Updated station declared cash for ${currency}`,
+        req.ip
+      );
+
+      await client.query('COMMIT');
+
+      // Get updated summary
+      const updatedSummary = await db.query(
+        `SELECT * FROM settlement_summaries WHERE settlement_id = $1 AND currency = $2`,
+        [id, currency]
+      );
+
+      res.json({
+        success: true,
+        message: 'Station declared cash updated',
+        data: { summary: updatedSummary.rows[0] }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Update station declared cash error:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update station declared cash'
+    });
+  }
+};
+
 module.exports = {
   getSettlements,
   getSettlementById,
   createSettlement,
   updateAgentDeclaredCash,
+  updateStationDeclaredCash,
   addExpense,
   removeExpense,
   submitSettlement,

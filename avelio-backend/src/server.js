@@ -144,6 +144,7 @@ const salesAgentRoutes = require('./routes/salesAgentRoutes');
 const expenseCodeRoutes = require('./routes/expenseCodeRoutes');
 const stationSalesRoutes = require('./routes/stationSalesRoutes');
 const settlementRoutes = require('./routes/settlementRoutes');
+const hqSettlementRoutes = require('./routes/hqSettlementRoutes');
 
 
 
@@ -163,6 +164,7 @@ app.use('/api/v1/sales-agents', salesAgentRoutes);
 app.use('/api/v1/expense-codes', expenseCodeRoutes);
 app.use('/api/v1/station-sales', stationSalesRoutes);
 app.use('/api/v1/settlements', settlementRoutes);
+app.use('/api/v1/hq-settlements', hqSettlementRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -7,15 +7,2093 @@
 [33m[nodemon] watching path(s): *.*[39m
 [33m[nodemon] watching extensions: js,mjs,cjs,json[39m
 [32m[nodemon] starting `node src/server.js`[39m
-2026-01-05 21:22:03 [[32minfo[39m]: ===========================================
-2026-01-05 21:22:03 [[32minfo[39m]: 🚀 Avelio Credit-Lite API Server
-2026-01-05 21:22:03 [[32minfo[39m]: ===========================================
-2026-01-05 21:22:03 [[32minfo[39m]: ✅ Server running on: http://0.0.0.0:5001
-2026-01-05 21:22:03 [[32minfo[39m]: ✅ Local access: http://localhost:5001
-2026-01-05 21:22:03 [[32minfo[39m]: ✅ Network access: http://192.168.7.114:5001
-2026-01-05 21:22:03 [[32minfo[39m]: ✅ Environment: development
-2026-01-05 21:22:03 [[32minfo[39m]: ✅ Health check: http://0.0.0.0:5001/health
-2026-01-05 21:22:03 [[32minfo[39m]: ===========================================
+2026-01-06 13:57:58 [[32minfo[39m]: ===========================================
+2026-01-06 13:57:58 [[32minfo[39m]: 🚀 Avelio Credit-Lite API Server
+2026-01-06 13:57:58 [[32minfo[39m]: ===========================================
+2026-01-06 13:57:58 [[32minfo[39m]: ✅ Server running on: http://0.0.0.0:5001
+2026-01-06 13:57:58 [[32minfo[39m]: ✅ Local access: http://localhost:5001
+2026-01-06 13:57:58 [[32minfo[39m]: ✅ Network access: http://192.168.7.114:5001
+2026-01-06 13:57:58 [[32minfo[39m]: ✅ Environment: development
+2026-01-06 13:57:58 [[32minfo[39m]: ✅ Health check: http://0.0.0.0:5001/health
+2026-01-06 13:57:58 [[32minfo[39m]: ===========================================
 ✅ Connected to PostgreSQL database
-📅 Database time: 2026-01-05T19:22:03.474Z
-2026-01-05 21:22:03 [[32minfo[39m]: ===========================================
+📅 Database time: 2026-01-06 13:57:58.467333+02
+2026-01-06 13:57:58 [[32minfo[39m]: ===========================================
+2026-01-06 13:58:20 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:20 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:20 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 80,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 33,
+  rows: 8
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 4,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 6,
+  rows: 8
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 10,
+  rows: 8
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+✅ Connected to PostgreSQL database
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 6,
+  rows: 8
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 292,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 7,
+  rows: 20
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 6,
+  rows: 20
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 4,
+  rows: 20
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 4,
+  rows: 20
+}
+✅ Connected to PostgreSQL database
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 372,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 12,
+  rows: 5
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 5,
+  rows: 5
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 4,
+  rows: 5
+}
+2026-01-06 13:58:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 4,
+  rows: 5
+}
+2026-01-06 13:58:27 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 7,
+  rows: 7
+}
+2026-01-06 13:58:27 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 3,
+  rows: 10
+}
+2026-01-06 13:58:27 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 1,
+  rows: 7
+}
+2026-01-06 13:58:27 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 10
+}
+2026-01-06 13:58:30 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/sales-agents","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:30 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT sa.*, s.station_code, s.station_name\n' +
+    '      FROM sales_agents sa\n' +
+    '      LEFT JOIN stations s ON sa.station_id = s.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND sa.station_id = $1 AND sa.is_active = true ORDER BY s.station_code ASC, sa.agent_name ASC',
+  duration: 4,
+  rows: 0
+}
+2026-01-06 13:58:30 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/station-sales","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1',
+  duration: 13,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT s.*, st.station_code, st.station_name,\n' +
+    '             u1.name as created_by_name,\n' +
+    '             u2.name as reviewed_by_name\n' +
+    '      FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1 ORDER BY s.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1',
+  duration: 10,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT currency, expected_cash, total_expenses, expected_net_cash,\n' +
+    '                actual_cash_received, final_variance, variance_status\n' +
+    '         FROM settlement_summaries WHERE settlement_id = $1',
+  duration: 3,
+  rows: 2
+}
+Executed query {
+  text: '\n' +
+    '      SELECT ss.*,\n' +
+    '             st.station_code, st.station_name,\n' +
+    '             sa.agent_code, sa.agent_name,\n' +
+    '             u.name as created_by_name\n' +
+    '      FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1 ORDER BY ss.transaction_date DESC, ss.transaction_time DESC\n' +
+    '               LIMIT $2 OFFSET $3',
+  duration: 3,
+  rows: 2
+}
+2026-01-06 13:58:34 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements/d2e6b1db-1824-49fd-89cb-cf5617afeb78","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT s.*, st.station_code, st.station_name,\n' +
+    '              u1.name as created_by_name,\n' +
+    '              u2.name as submitted_by_name,\n' +
+    '              u3.name as reviewed_by_name\n' +
+    '       FROM settlements s\n' +
+    '       JOIN stations st ON s.station_id = st.id\n' +
+    '       LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '       LEFT JOIN users u2 ON s.submitted_by = u2.id\n' +
+    '       LEFT JOIN users u3 ON s.reviewed_by = u3.id\n' +
+    '       WHERE s.id = $1',
+  duration: 6,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT sae.*, sa.agent_code, sa.agent_name\n' +
+    '       FROM settlement_agent_entries sae\n' +
+    '       LEFT JOIN sales_agents sa ON sae.agent_id = sa.id\n' +
+    '       WHERE sae.settlement_id = $1\n' +
+    '       ORDER BY sa.agent_name NULLS LAST, sae.currency',
+  duration: 6,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT se.*, ec.code as expense_code, ec.name as expense_name, ec.category,\n' +
+    '              u.name as created_by_name\n' +
+    '       FROM settlement_expenses se\n' +
+    '       JOIN expense_codes ec ON se.expense_code_id = ec.id\n' +
+    '       LEFT JOIN users u ON se.created_by = u.id\n' +
+    '       WHERE se.settlement_id = $1\n' +
+    '       ORDER BY se.created_at DESC',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM settlement_summaries WHERE settlement_id = $1 ORDER BY currency',
+  duration: 4,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT sal.*, u.name as user_name\n' +
+    '       FROM settlement_audit_logs sal\n' +
+    '       LEFT JOIN users u ON sal.user_id = u.id\n' +
+    '       WHERE sal.settlement_id = $1\n' +
+    '       ORDER BY sal.created_at DESC\n' +
+    '       LIMIT 50',
+  duration: 9,
+  rows: 3
+}
+2026-01-06 13:58:37 [[32minfo[39m]: HTTP Request {"method":"POST","path":"/api/v1/settlements/d2e6b1db-1824-49fd-89cb-cf5617afeb78/submit","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 3,
+  rows: 5
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 4,
+  rows: 20
+}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 4,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 3,
+  rows: 8
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 3,
+  rows: 1
+}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 3,
+  rows: 5
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 9,
+  rows: 20
+}
+2026-01-06 13:58:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 8
+}
+2026-01-06 13:58:40 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:40 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 2,
+  rows: 7
+}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 2,
+  rows: 10
+}
+2026-01-06 13:58:40 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:40 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 2,
+  rows: 7
+}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 4,
+  rows: 10
+}
+2026-01-06 13:58:45 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/sales-agents","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:45 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:58:45 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/station-sales","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT sa.*, s.station_code, s.station_name\n' +
+    '      FROM sales_agents sa\n' +
+    '      LEFT JOIN stations s ON sa.station_id = s.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND sa.station_id = $1 AND sa.is_active = true ORDER BY s.station_code ASC, sa.agent_name ASC',
+  duration: 5,
+  rows: 0
+}
+Executed query {
+  text: '\n' +
+    '      SELECT s.*, st.station_code, st.station_name,\n' +
+    '             u1.name as created_by_name,\n' +
+    '             u2.name as reviewed_by_name\n' +
+    '      FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1 ORDER BY s.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT currency, expected_cash, total_expenses, expected_net_cash,\n' +
+    '                actual_cash_received, final_variance, variance_status\n' +
+    '         FROM settlement_summaries WHERE settlement_id = $1',
+  duration: 2,
+  rows: 2
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1',
+  duration: 18,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT ss.*,\n' +
+    '             st.station_code, st.station_name,\n' +
+    '             sa.agent_code, sa.agent_name,\n' +
+    '             u.name as created_by_name\n' +
+    '      FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1 ORDER BY ss.transaction_date DESC, ss.transaction_time DESC\n' +
+    '               LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 2
+}
+2026-01-06 13:58:50 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements/d2e6b1db-1824-49fd-89cb-cf5617afeb78","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT s.*, st.station_code, st.station_name,\n' +
+    '              u1.name as created_by_name,\n' +
+    '              u2.name as submitted_by_name,\n' +
+    '              u3.name as reviewed_by_name\n' +
+    '       FROM settlements s\n' +
+    '       JOIN stations st ON s.station_id = st.id\n' +
+    '       LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '       LEFT JOIN users u2 ON s.submitted_by = u2.id\n' +
+    '       LEFT JOIN users u3 ON s.reviewed_by = u3.id\n' +
+    '       WHERE s.id = $1',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT sae.*, sa.agent_code, sa.agent_name\n' +
+    '       FROM settlement_agent_entries sae\n' +
+    '       LEFT JOIN sales_agents sa ON sae.agent_id = sa.id\n' +
+    '       WHERE sae.settlement_id = $1\n' +
+    '       ORDER BY sa.agent_name NULLS LAST, sae.currency',
+  duration: 5,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT se.*, ec.code as expense_code, ec.name as expense_name, ec.category,\n' +
+    '              u.name as created_by_name\n' +
+    '       FROM settlement_expenses se\n' +
+    '       JOIN expense_codes ec ON se.expense_code_id = ec.id\n' +
+    '       LEFT JOIN users u ON se.created_by = u.id\n' +
+    '       WHERE se.settlement_id = $1\n' +
+    '       ORDER BY se.created_at DESC',
+  duration: 6,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM settlement_summaries WHERE settlement_id = $1 ORDER BY currency',
+  duration: 3,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT sal.*, u.name as user_name\n' +
+    '       FROM settlement_audit_logs sal\n' +
+    '       LEFT JOIN users u ON sal.user_id = u.id\n' +
+    '       WHERE sal.settlement_id = $1\n' +
+    '       ORDER BY sal.created_at DESC\n' +
+    '       LIMIT 50',
+  duration: 5,
+  rows: 4
+}
+2026-01-06 13:58:57 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '    ',
+  duration: 6,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     ORDER BY hs.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 2,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 5,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+2026-01-06 13:58:57 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '    ',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     ORDER BY hs.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 2,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+2026-01-06 13:59:07 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements/71f332eb-4571-4b12-b48e-814c2e4e526a","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT hs.*, u1.name as created_by_name, u2.name as submitted_by_name, u3.name as reviewed_by_name\n' +
+    '       FROM hq_settlements hs\n' +
+    '       LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '       LEFT JOIN users u2 ON hs.submitted_by = u2.id\n' +
+    '       LEFT JOIN users u3 ON hs.reviewed_by = u3.id\n' +
+    '       WHERE hs.id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT hss.id as link_id, s.*, st.station_code, st.station_name\n' +
+    '       FROM hq_settlement_stations hss\n' +
+    '       JOIN settlements s ON hss.station_settlement_id = s.id\n' +
+    '       JOIN stations st ON s.station_id = st.id\n' +
+    '       WHERE hss.hq_settlement_id = $1\n' +
+    '       ORDER BY st.station_name',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT he.*, ec.code as expense_code, ec.name as expense_name, ec.category, u.name as created_by_name\n' +
+    '       FROM hq_settlement_expenses he\n' +
+    '       JOIN expense_codes ec ON he.expense_code_id = ec.id\n' +
+    '       LEFT JOIN users u ON he.created_by = u.id\n' +
+    '       WHERE he.hq_settlement_id = $1\n' +
+    '       ORDER BY he.created_at DESC',
+  duration: 4,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1 ORDER BY currency',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT hal.*, u.name as user_name\n' +
+    '       FROM hq_settlement_audit_logs hal\n' +
+    '       LEFT JOIN users u ON hal.user_id = u.id\n' +
+    '       WHERE hal.hq_settlement_id = $1\n' +
+    '       ORDER BY hal.created_at DESC\n' +
+    '       LIMIT 50',
+  duration: 8,
+  rows: 1
+}
+2026-01-06 13:59:07 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 12
+}
+2026-01-06 13:59:21 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '    ',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     ORDER BY hs.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 2,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 3,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+2026-01-06 13:59:31 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND hs.status = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND hs.status = $1 ORDER BY hs.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 0
+}
+2026-01-06 13:59:34 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND hs.status = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND hs.status = $1 ORDER BY hs.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+2026-01-06 13:59:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements/71f332eb-4571-4b12-b48e-814c2e4e526a","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT hs.*, u1.name as created_by_name, u2.name as submitted_by_name, u3.name as reviewed_by_name\n' +
+    '       FROM hq_settlements hs\n' +
+    '       LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '       LEFT JOIN users u2 ON hs.submitted_by = u2.id\n' +
+    '       LEFT JOIN users u3 ON hs.reviewed_by = u3.id\n' +
+    '       WHERE hs.id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT hss.id as link_id, s.*, st.station_code, st.station_name\n' +
+    '       FROM hq_settlement_stations hss\n' +
+    '       JOIN settlements s ON hss.station_settlement_id = s.id\n' +
+    '       JOIN stations st ON s.station_id = st.id\n' +
+    '       WHERE hss.hq_settlement_id = $1\n' +
+    '       ORDER BY st.station_name',
+  duration: 2,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT he.*, ec.code as expense_code, ec.name as expense_name, ec.category, u.name as created_by_name\n' +
+    '       FROM hq_settlement_expenses he\n' +
+    '       JOIN expense_codes ec ON he.expense_code_id = ec.id\n' +
+    '       LEFT JOIN users u ON he.created_by = u.id\n' +
+    '       WHERE he.hq_settlement_id = $1\n' +
+    '       ORDER BY he.created_at DESC',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1 ORDER BY currency',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT hal.*, u.name as user_name\n' +
+    '       FROM hq_settlement_audit_logs hal\n' +
+    '       LEFT JOIN users u ON hal.user_id = u.id\n' +
+    '       WHERE hal.hq_settlement_id = $1\n' +
+    '       ORDER BY hal.created_at DESC\n' +
+    '       LIMIT 50',
+  duration: 1,
+  rows: 1
+}
+2026-01-06 13:59:38 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 12
+}
+2026-01-06 13:59:50 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 1,
+  rows: 7
+}
+2026-01-06 13:59:50 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 10
+}
+2026-01-06 13:59:50 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 1,
+  rows: 7
+}
+2026-01-06 13:59:50 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 10
+}
+2026-01-06 13:59:53 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/sales-agents","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:59:53 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 13:59:53 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/station-sales","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT sa.*, s.station_code, s.station_name\n' +
+    '      FROM sales_agents sa\n' +
+    '      LEFT JOIN stations s ON sa.station_id = s.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND sa.station_id = $1 AND sa.is_active = true ORDER BY s.station_code ASC, sa.agent_name ASC',
+  duration: 3,
+  rows: 0
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT s.*, st.station_code, st.station_name,\n' +
+    '             u1.name as created_by_name,\n' +
+    '             u2.name as reviewed_by_name\n' +
+    '      FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1 ORDER BY s.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT currency, expected_cash, total_expenses, expected_net_cash,\n' +
+    '                actual_cash_received, final_variance, variance_status\n' +
+    '         FROM settlement_summaries WHERE settlement_id = $1',
+  duration: 1,
+  rows: 2
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1',
+  duration: 8,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT ss.*,\n' +
+    '             st.station_code, st.station_name,\n' +
+    '             sa.agent_code, sa.agent_name,\n' +
+    '             u.name as created_by_name\n' +
+    '      FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1 ORDER BY ss.transaction_date DESC, ss.transaction_time DESC\n' +
+    '               LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 2
+}
+2026-01-06 14:00:05 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements/d2e6b1db-1824-49fd-89cb-cf5617afeb78","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT s.*, st.station_code, st.station_name,\n' +
+    '              u1.name as created_by_name,\n' +
+    '              u2.name as submitted_by_name,\n' +
+    '              u3.name as reviewed_by_name\n' +
+    '       FROM settlements s\n' +
+    '       JOIN stations st ON s.station_id = st.id\n' +
+    '       LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '       LEFT JOIN users u2 ON s.submitted_by = u2.id\n' +
+    '       LEFT JOIN users u3 ON s.reviewed_by = u3.id\n' +
+    '       WHERE s.id = $1',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT sae.*, sa.agent_code, sa.agent_name\n' +
+    '       FROM settlement_agent_entries sae\n' +
+    '       LEFT JOIN sales_agents sa ON sae.agent_id = sa.id\n' +
+    '       WHERE sae.settlement_id = $1\n' +
+    '       ORDER BY sa.agent_name NULLS LAST, sae.currency',
+  duration: 2,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT se.*, ec.code as expense_code, ec.name as expense_name, ec.category,\n' +
+    '              u.name as created_by_name\n' +
+    '       FROM settlement_expenses se\n' +
+    '       JOIN expense_codes ec ON se.expense_code_id = ec.id\n' +
+    '       LEFT JOIN users u ON se.created_by = u.id\n' +
+    '       WHERE se.settlement_id = $1\n' +
+    '       ORDER BY se.created_at DESC',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM settlement_summaries WHERE settlement_id = $1 ORDER BY currency',
+  duration: 1,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT sal.*, u.name as user_name\n' +
+    '       FROM settlement_audit_logs sal\n' +
+    '       LEFT JOIN users u ON sal.user_id = u.id\n' +
+    '       WHERE sal.settlement_id = $1\n' +
+    '       ORDER BY sal.created_at DESC\n' +
+    '       LIMIT 50',
+  duration: 4,
+  rows: 4
+}
+2026-01-06 14:03:46 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:03:46 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/station-sales","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT s.*, st.station_code, st.station_name,\n' +
+    '             u1.name as created_by_name,\n' +
+    '             u2.name as reviewed_by_name\n' +
+    '      FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1 ORDER BY s.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT ss.*,\n' +
+    '             st.station_code, st.station_name,\n' +
+    '             sa.agent_code, sa.agent_name,\n' +
+    '             u.name as created_by_name\n' +
+    '      FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1 ORDER BY ss.transaction_date DESC, ss.transaction_time DESC\n' +
+    '               LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 2
+}
+Executed query {
+  text: 'SELECT currency, expected_cash, total_expenses, expected_net_cash,\n' +
+    '                actual_cash_received, final_variance, variance_status\n' +
+    '         FROM settlement_summaries WHERE settlement_id = $1',
+  duration: 1,
+  rows: 2
+}
+2026-01-06 14:03:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '    ',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     ORDER BY hs.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 1,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 3,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+2026-01-06 14:03:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/hq-settlements","ip":"127.0.0.1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '    ',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name\n' +
+    '      FROM hq_settlements hs\n' +
+    '      LEFT JOIN users u1 ON hs.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON hs.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     ORDER BY hs.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 1,
+  rows: 4
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+  duration: 0,
+  rows: 0
+}
+Executed query {
+  text: 'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
+  duration: 1,
+  rows: 1
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"POST","path":"/api/v1/auth/login","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[32minfo[39m]: Audit: LOGIN {"action":"LOGIN","userId":"53e3741b-51ee-4d66-9f6b-33ecabd8b463","resourceType":"USER","resourceId":"53e3741b-51ee-4d66-9f6b-33ecabd8b463","oldValue":null,"newValue":null,"ipAddress":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[31merror[39m]: Audit logging failed: {"error":"column \"resource_type\" of relation \"audit_logs\" does not exist","userId":"53e3741b-51ee-4d66-9f6b-33ecabd8b463","action":"LOGIN","resourceType":"USER","resourceId":"53e3741b-51ee-4d66-9f6b-33ecabd8b463"}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 0,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 2,
+  rows: 5
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 4,
+  rows: 1
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 6,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 13,
+  rows: 20
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 12,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 8,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 6,
+  rows: 5
+}
+✅ Connected to PostgreSQL database
+✅ Connected to PostgreSQL database
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 88,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 8
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 89,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 3,
+  rows: 20
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 8,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 5,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 1,
+  rows: 8
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 4,
+  rows: 20
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 10,
+  rows: 5
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/receipts","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1)',
+  duration: 12,
+  rows: 1
+}
+2026-01-06 14:05:36 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stats/dashboard","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) as total\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '    ',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     AND UPPER(r.status) = UPPER($1) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 3,
+  rows: 8
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    "        COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,\n" +
+    "        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count\n" +
+    '       FROM receipts \n' +
+    '       WHERE issue_date = $1 AND is_void = false',
+  duration: 3,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PAID' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT r.*, a.agency_id as agency_code, a.agency_name\n' +
+    '      FROM receipts r\n' +
+    '      LEFT JOIN agencies a ON r.agency_id = a.id\n' +
+    '      WHERE r.is_void = false\n' +
+    '     ORDER BY r.created_at DESC LIMIT $1 OFFSET $2',
+  duration: 5,
+  rows: 20
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total,\n' +
+    '        COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count\n' +
+    '       FROM receipts \n' +
+    "       WHERE status = 'PENDING' AND is_void = false",
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        COUNT(*) as count,\n' +
+    '        COALESCE(SUM(amount), 0) as total\n' +
+    '       FROM receipts \n' +
+    '       WHERE issue_date >= $1 AND is_void = false',
+  duration: 1,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT \n' +
+    '        a.agency_name,\n' +
+    '        a.agency_id,\n' +
+    '        COUNT(r.id) as receipt_count,\n' +
+    '        COALESCE(SUM(r.amount), 0) as total_amount\n' +
+    '       FROM receipts r\n' +
+    '       JOIN agencies a ON r.agency_id = a.id\n' +
+    '       WHERE r.is_void = false\n' +
+    '       GROUP BY a.id, a.agency_name, a.agency_id\n' +
+    '       ORDER BY total_amount DESC\n' +
+    '       LIMIT 5',
+  duration: 2,
+  rows: 5
+}
+2026-01-06 14:05:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 1,
+  rows: 7
+}
+2026-01-06 14:05:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/stations","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 5,
+  rows: 10
+}
+Executed query {
+  text: 'SELECT * FROM stations WHERE is_active = true ORDER BY station_code ASC',
+  duration: 3,
+  rows: 7
+}
+2026-01-06 14:05:49 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/expense-codes","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: 'SELECT * FROM expense_codes WHERE 1=1 AND is_active = true ORDER BY category ASC, code ASC',
+  duration: 1,
+  rows: 10
+}
+2026-01-06 14:05:57 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/sales-agents","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:57 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/settlements","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+2026-01-06 14:05:57 [[32minfo[39m]: HTTP Request {"method":"GET","path":"/api/v1/station-sales","ip":"192.168.7.114","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"}
+Executed query {
+  text: '\n' +
+    '      SELECT sa.*, s.station_code, s.station_name\n' +
+    '      FROM sales_agents sa\n' +
+    '      LEFT JOIN stations s ON sa.station_id = s.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND sa.station_id = $1 AND sa.is_active = true ORDER BY s.station_code ASC, sa.agent_name ASC',
+  duration: 2,
+  rows: 0
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1',
+  duration: 8,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT s.*, st.station_code, st.station_name,\n' +
+    '             u1.name as created_by_name,\n' +
+    '             u2.name as reviewed_by_name\n' +
+    '      FROM settlements s\n' +
+    '      JOIN stations st ON s.station_id = st.id\n' +
+    '      LEFT JOIN users u1 ON s.created_by = u1.id\n' +
+    '      LEFT JOIN users u2 ON s.reviewed_by = u2.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND s.station_id = $1 ORDER BY s.created_at DESC LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 1
+}
+Executed query {
+  text: '\n' +
+    '      SELECT COUNT(*) FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1',
+  duration: 12,
+  rows: 1
+}
+Executed query {
+  text: 'SELECT currency, expected_cash, total_expenses, expected_net_cash,\n' +
+    '                actual_cash_received, final_variance, variance_status\n' +
+    '         FROM settlement_summaries WHERE settlement_id = $1',
+  duration: 3,
+  rows: 2
+}
+Executed query {
+  text: '\n' +
+    '      SELECT ss.*,\n' +
+    '             st.station_code, st.station_name,\n' +
+    '             sa.agent_code, sa.agent_name,\n' +
+    '             u.name as created_by_name\n' +
+    '      FROM station_sales ss\n' +
+    '      JOIN stations st ON ss.station_id = st.id\n' +
+    '      LEFT JOIN sales_agents sa ON ss.agent_id = sa.id\n' +
+    '      LEFT JOIN users u ON ss.created_by = u.id\n' +
+    '      WHERE 1=1\n' +
+    '     AND ss.station_id = $1 ORDER BY ss.transaction_date DESC, ss.transaction_time DESC\n' +
+    '               LIMIT $2 OFFSET $3',
+  duration: 2,
+  rows: 2
+}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+2026-01-06 14:39:43 [[32minfo[39m]: ===========================================
+2026-01-06 14:39:43 [[32minfo[39m]: 🚀 Avelio Credit-Lite API Server
+2026-01-06 14:39:43 [[32minfo[39m]: ===========================================
+2026-01-06 14:39:43 [[32minfo[39m]: ✅ Server running on: http://0.0.0.0:5001
+2026-01-06 14:39:43 [[32minfo[39m]: ✅ Local access: http://localhost:5001
+2026-01-06 14:39:43 [[32minfo[39m]: ✅ Network access: http://192.168.7.114:5001
+2026-01-06 14:39:43 [[32minfo[39m]: ✅ Environment: development
+2026-01-06 14:39:43 [[32minfo[39m]: ✅ Health check: http://0.0.0.0:5001/health
+2026-01-06 14:39:43 [[32minfo[39m]: ===========================================
+✅ Connected to PostgreSQL database
+📅 Database time: 2026-01-06 14:39:43.814709+02
+2026-01-06 14:39:43 [[32minfo[39m]: ===========================================
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+2026-01-06 14:43:12 [[32minfo[39m]: ===========================================
+2026-01-06 14:43:12 [[32minfo[39m]: 🚀 Avelio Credit-Lite API Server
+2026-01-06 14:43:12 [[32minfo[39m]: ===========================================
+2026-01-06 14:43:12 [[32minfo[39m]: ✅ Server running on: http://0.0.0.0:5001
+2026-01-06 14:43:12 [[32minfo[39m]: ✅ Local access: http://localhost:5001
+2026-01-06 14:43:12 [[32minfo[39m]: ✅ Network access: http://192.168.7.114:5001
+2026-01-06 14:43:12 [[32minfo[39m]: ✅ Environment: development
+2026-01-06 14:43:12 [[32minfo[39m]: ✅ Health check: http://0.0.0.0:5001/health
+2026-01-06 14:43:12 [[32minfo[39m]: ===========================================
+✅ Connected to PostgreSQL database
+📅 Database time: 2026-01-06 14:43:12.737988+02
+2026-01-06 14:43:12 [[32minfo[39m]: ===========================================

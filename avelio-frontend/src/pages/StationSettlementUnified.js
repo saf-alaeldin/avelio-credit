@@ -41,6 +41,7 @@ export default function StationSettlementUnified() {
   // Sales filter
   const [dateFilterFrom, setDateFilterFrom] = useState('');
   const [dateFilterTo, setDateFilterTo] = useState('');
+  const [showAllSales, setShowAllSales] = useState(true); // Show all sales by default
 
   // Settlement creation
   const [periodFrom, setPeriodFrom] = useState('');
@@ -51,6 +52,9 @@ export default function StationSettlementUnified() {
   const [agentEntries, setAgentEntries] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [summaries, setSummaries] = useState([]);
+
+  // Existing settlements for station
+  const [existingSettlements, setExistingSettlements] = useState([]);
 
   // Currency tab
   const [activeCurrency, setActiveCurrency] = useState('USD');
@@ -65,8 +69,29 @@ export default function StationSettlementUnified() {
   // Modals
   const [showAddSaleModal, setShowAddSaleModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState({
+    title: '',
+    message: '',
+    onConfirm: null,
+    confirmText: 'Confirm',
+    confirmClass: 'btn-primary'
+  });
 
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+
+  // Get user role from token
+  const getUserRole = () => {
+    if (!token) return null;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role;
+    } catch {
+      return null;
+    }
+  };
+  const userRole = getUserRole();
+  const isAdmin = userRole === 'admin';
 
   // Fetch stations
   const fetchStations = useCallback(async () => {
@@ -117,6 +142,25 @@ export default function StationSettlementUnified() {
     }
   }, [token]);
 
+  // Fetch existing settlements for station
+  const fetchExistingSettlements = useCallback(async () => {
+    if (!stationId) {
+      setExistingSettlements([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/settlements?station_id=${stationId}&pageSize=10`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setExistingSettlements(data.data?.settlements || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch existing settlements:', err);
+    }
+  }, [token, stationId]);
+
   // Fetch unsettled sales
   const fetchSales = useCallback(async () => {
     if (!stationId) {
@@ -127,7 +171,9 @@ export default function StationSettlementUnified() {
       setSalesLoading(true);
       const params = new URLSearchParams();
       params.append('station_id', stationId);
-      params.append('settled', 'false');
+      if (!showAllSales) {
+        params.append('settled', 'false');
+      }
       if (dateFilterFrom) params.append('date_from', dateFilterFrom);
       if (dateFilterTo) params.append('date_to', dateFilterTo);
       params.append('pageSize', '500');
@@ -145,7 +191,7 @@ export default function StationSettlementUnified() {
     } finally {
       setSalesLoading(false);
     }
-  }, [token, stationId, dateFilterFrom, dateFilterTo]);
+  }, [token, stationId, dateFilterFrom, dateFilterTo, showAllSales]);
 
   // Fetch settlement details (edit mode)
   const fetchSettlement = useCallback(async () => {
@@ -191,6 +237,12 @@ export default function StationSettlementUnified() {
 
   useEffect(() => {
     if (!isEditMode) {
+      fetchExistingSettlements();
+    }
+  }, [fetchExistingSettlements, isEditMode]);
+
+  useEffect(() => {
+    if (!isEditMode) {
       fetchSales();
     }
   }, [fetchSales, isEditMode]);
@@ -201,10 +253,21 @@ export default function StationSettlementUnified() {
     }
   }, [fetchSettlement, isEditMode]);
 
-  // Delete sale
-  const handleDeleteSale = async (saleId) => {
-    if (!window.confirm('Delete this sale?')) return;
+  // Delete sale - show confirmation modal
+  const handleDeleteSaleClick = (saleId) => {
+    setConfirmModalConfig({
+      title: 'Delete Sale',
+      message: 'Are you sure you want to delete this sale?',
+      onConfirm: () => handleDeleteSaleConfirm(saleId),
+      confirmText: 'Delete',
+      confirmClass: 'btn-danger'
+    });
+    setShowConfirmModal(true);
+  };
 
+  // Actually delete the sale
+  const handleDeleteSaleConfirm = async (saleId) => {
+    setShowConfirmModal(false);
     try {
       const res = await fetch(`${API_BASE}/station-sales/${saleId}`, {
         method: 'DELETE',
@@ -226,6 +289,8 @@ export default function StationSettlementUnified() {
 
   // Create settlement
   const handleCreateSettlement = async () => {
+    console.log('Create Settlement clicked:', { stationId, periodFrom, periodTo });
+
     if (!stationId || !periodFrom || !periodTo) {
       setError('Please select station and date range');
       return;
@@ -235,6 +300,7 @@ export default function StationSettlementUnified() {
       setSaving(true);
       setError('');
 
+      console.log('Sending request to create settlement...');
       const res = await fetch(`${API_BASE}/settlements`, {
         method: 'POST',
         headers: {
@@ -249,14 +315,18 @@ export default function StationSettlementUnified() {
       });
 
       const data = await res.json();
+      console.log('Create settlement response:', data);
 
       if (!res.ok) {
         throw new Error(data.message || 'Failed to create settlement');
       }
 
       setSuccess('Settlement created successfully');
-      navigate(`/station-settlement/${data.data.settlement.id}`);
+      const settlementId = data.data?.settlement?.id || data.data?.id;
+      console.log('Navigating to settlement:', settlementId);
+      navigate(`/station-settlement/${settlementId}`);
     } catch (err) {
+      console.error('Create settlement error:', err);
       setError(err.message);
     } finally {
       setSaving(false);
@@ -325,10 +395,21 @@ export default function StationSettlementUnified() {
     }
   };
 
-  // Remove expense
-  const handleRemoveExpense = async (expenseId) => {
-    if (!window.confirm('Remove this expense?')) return;
+  // Remove expense - show confirmation modal
+  const handleRemoveExpenseClick = (expenseId) => {
+    setConfirmModalConfig({
+      title: 'Remove Expense',
+      message: 'Are you sure you want to remove this expense?',
+      onConfirm: () => handleRemoveExpenseConfirm(expenseId),
+      confirmText: 'Remove',
+      confirmClass: 'btn-danger'
+    });
+    setShowConfirmModal(true);
+  };
 
+  // Actually remove the expense
+  const handleRemoveExpenseConfirm = async (expenseId) => {
+    setShowConfirmModal(false);
     try {
       const res = await fetch(`${API_BASE}/settlements/${id}/expenses/${expenseId}`, {
         method: 'DELETE',
@@ -348,12 +429,49 @@ export default function StationSettlementUnified() {
     }
   };
 
-  // Submit for review
-  const handleSubmit = async () => {
-    if (!window.confirm('Submit this settlement for review? You won\'t be able to make changes after submission.')) {
-      return;
-    }
+  // Update station declared cash (for verification)
+  const handleUpdateStationCash = async (declaredCash) => {
+    try {
+      const res = await fetch(`${API_BASE}/settlements/${id}/station-cash`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currency: activeCurrency,
+          station_declared_cash: declaredCash
+        })
+      });
 
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to update station cash');
+      }
+
+      fetchSettlement();
+      setSuccess('Station cash updated');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Submit for review - show confirmation modal
+  const handleSubmitClick = () => {
+    setConfirmModalConfig({
+      title: 'Submit Settlement',
+      message: 'Submit this settlement for review? You won\'t be able to make changes after submission.',
+      onConfirm: handleSubmitConfirm,
+      confirmText: 'Submit for Review',
+      confirmClass: 'btn-primary'
+    });
+    setShowConfirmModal(true);
+  };
+
+  // Actually submit the settlement
+  const handleSubmitConfirm = async () => {
+    setShowConfirmModal(false);
     try {
       setSaving(true);
       const res = await fetch(`${API_BASE}/settlements/${id}/submit`, {
@@ -376,12 +494,52 @@ export default function StationSettlementUnified() {
     }
   };
 
+  // Delete settlement (admin only) - show confirmation modal
+  const handleDeleteSettlementClick = (settlementId, settlementNumber) => {
+    setConfirmModalConfig({
+      title: 'Delete Settlement',
+      message: `Are you sure you want to delete settlement ${settlementNumber}? This action cannot be undone.`,
+      onConfirm: () => handleDeleteSettlementConfirm(settlementId),
+      confirmText: 'Delete',
+      confirmClass: 'btn-danger'
+    });
+    setShowConfirmModal(true);
+  };
+
+  // Actually delete the settlement
+  const handleDeleteSettlementConfirm = async (settlementId) => {
+    setShowConfirmModal(false);
+    try {
+      setSaving(true);
+      const res = await fetch(`${API_BASE}/settlements/${settlementId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to delete settlement');
+      }
+
+      setSuccess('Settlement deleted successfully');
+      fetchExistingSettlements();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Calculate sales preview for settlement creation
   const getSalesPreview = () => {
     if (!periodFrom || !periodTo) return { count: 0, totals: {} };
 
     const filtered = sales.filter(s => {
-      const saleDate = s.transaction_date.split('T')[0];
+      // Parse date and convert to local date string to handle timezone correctly
+      const saleDateObj = new Date(s.transaction_date);
+      const saleDate = saleDateObj.toLocaleDateString('en-CA'); // Returns YYYY-MM-DD format
       return saleDate >= periodFrom && saleDate <= periodTo;
     });
 
@@ -418,6 +576,7 @@ export default function StationSettlementUnified() {
 
   const isDraft = !settlement || settlement.status === 'DRAFT';
   const selectedStation = stations.find(s => s.id === stationId);
+  const isJubaStation = selectedStation?.station_code === 'JUB';
 
   if (loading) {
     return <div className="settlement-page"><div className="settlement-loading">Loading settlement...</div></div>;
@@ -444,7 +603,7 @@ export default function StationSettlementUnified() {
               <button className="btn-secondary" onClick={() => navigate('/settlements')}>
                 Cancel
               </button>
-              <button className="btn-primary" onClick={handleSubmit} disabled={saving}>
+              <button className="btn-primary" onClick={handleSubmitClick} disabled={saving}>
                 {saving ? 'Submitting...' : 'Submit for Review'}
               </button>
             </>
@@ -491,15 +650,17 @@ export default function StationSettlementUnified() {
             </div>
           </div>
 
-          {/* Date filter */}
+          {/* Filters */}
           <div className="sales-filters">
             <div className="filter-group">
-              <label>To</label>
-              <input
-                type="date"
-                value={dateFilterTo}
-                onChange={(e) => setDateFilterTo(e.target.value)}
-              />
+              <label>Show</label>
+              <select
+                value={showAllSales ? 'all' : 'unsettled'}
+                onChange={(e) => setShowAllSales(e.target.value === 'all')}
+              >
+                <option value="all">All Sales</option>
+                <option value="unsettled">Unsettled Only</option>
+              </select>
             </div>
             <div className="filter-group">
               <label>From</label>
@@ -509,6 +670,14 @@ export default function StationSettlementUnified() {
                 onChange={(e) => setDateFilterFrom(e.target.value)}
               />
             </div>
+            <div className="filter-group">
+              <label>To</label>
+              <input
+                type="date"
+                value={dateFilterTo}
+                onChange={(e) => setDateFilterTo(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Sales table */}
@@ -516,7 +685,7 @@ export default function StationSettlementUnified() {
             <div className="sales-loading">Loading sales...</div>
           ) : sales.length === 0 ? (
             <div className="sales-empty">
-              <p>No unsettled sales found for this station. Add sales manually or import from CSV.</p>
+              <p>No {showAllSales ? '' : 'unsettled '}sales found for this station. Add sales manually or import from CSV.</p>
             </div>
           ) : (
             <>
@@ -525,10 +694,12 @@ export default function StationSettlementUnified() {
                   <thead>
                     <tr>
                       <th>Reference</th>
-                      <th>Agent</th>
+                      {isJubaStation && <th>Agent</th>}
                       <th>Date</th>
                       <th>Flight</th>
-                      <th className="text-right">Amount</th>
+                      <th className="text-right">Reservation Amt</th>
+                      <th className="text-right">Cashout</th>
+                      <th className="text-right">Balance</th>
                       <th>Currency</th>
                       <th></th>
                     </tr>
@@ -537,16 +708,26 @@ export default function StationSettlementUnified() {
                     {sales.map(s => (
                       <tr key={s.id}>
                         <td className="sale-ref">{s.sale_reference}</td>
-                        <td>
-                          <span className="agent-code">{s.agent_code}</span>
-                          <span className="agent-name">{s.agent_name}</span>
-                        </td>
+                        {isJubaStation && (
+                          <td>
+                            {s.agent_code ? (
+                              <>
+                                <span className="agent-code">{s.agent_code}</span>
+                                <span className="agent-name">{s.agent_name}</span>
+                              </>
+                            ) : (
+                              <span className="no-agent">No Agent</span>
+                            )}
+                          </td>
+                        )}
                         <td>{formatDate(s.transaction_date)}</td>
                         <td>{s.flight_reference || '-'}</td>
-                        <td className="text-right amount">{formatCurrency(s.amount)}</td>
+                        <td className="text-right amount">{formatCurrency(s.sales_amount)}</td>
+                        <td className="text-right amount cashout">{formatCurrency(s.cashout_amount)}</td>
+                        <td className={`text-right amount ${s.amount < 0 ? 'negative' : ''}`}>{formatCurrency(s.amount)}</td>
                         <td>{s.currency}</td>
                         <td>
-                          <button className="btn-remove" onClick={() => handleDeleteSale(s.id)}>
+                          <button className="btn-remove" onClick={() => handleDeleteSaleClick(s.id)}>
                             Delete
                           </button>
                         </td>
@@ -561,14 +742,16 @@ export default function StationSettlementUnified() {
                 <strong>Total:</strong>
                 {Object.entries(
                   sales.reduce((acc, s) => {
-                    if (!acc[s.currency]) acc[s.currency] = { count: 0, amount: 0 };
+                    if (!acc[s.currency]) acc[s.currency] = { count: 0, sales_amount: 0, cashout_amount: 0, balance: 0 };
                     acc[s.currency].count++;
-                    acc[s.currency].amount += parseFloat(s.amount);
+                    acc[s.currency].sales_amount += parseFloat(s.sales_amount || 0);
+                    acc[s.currency].cashout_amount += parseFloat(s.cashout_amount || 0);
+                    acc[s.currency].balance += parseFloat(s.amount || 0);
                     return acc;
                   }, {})
                 ).map(([currency, data]) => (
                   <span key={currency} className="summary-item">
-                    {currency} {formatCurrency(data.amount)} ({data.count} sales)
+                    {currency}: Sales {formatCurrency(data.sales_amount)} - Cashout {formatCurrency(data.cashout_amount)} = Balance {formatCurrency(data.balance)} ({data.count} entries)
                   </span>
                 ))}
               </div>
@@ -624,6 +807,49 @@ export default function StationSettlementUnified() {
               {saving ? 'Creating...' : 'Create Settlement'}
             </button>
           </div>
+
+          {/* Existing Settlements */}
+          {existingSettlements.length > 0 && (
+            <div className="existing-settlements">
+              <h4>Existing Settlements for this Station</h4>
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th>Settlement #</th>
+                    <th>Period</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {existingSettlements.map(s => (
+                    <tr key={s.id}>
+                      <td>{s.settlement_number}</td>
+                      <td>{new Date(s.period_from).toLocaleDateString()} - {new Date(s.period_to).toLocaleDateString()}</td>
+                      <td><span className={`status-badge status-${s.status?.toLowerCase()}`}>{s.status}</span></td>
+                      <td className="action-buttons">
+                        <button
+                          className="btn-link"
+                          onClick={() => navigate(`/station-settlement/${s.id}`)}
+                        >
+                          Open
+                        </button>
+                        {isAdmin && (
+                          <button
+                            className="btn-remove"
+                            onClick={() => handleDeleteSettlementClick(s.id, s.settlement_number)}
+                            disabled={saving}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -776,7 +1002,7 @@ export default function StationSettlementUnified() {
                         <td>
                           <button
                             className="btn-remove"
-                            onClick={() => handleRemoveExpense(expense.id)}
+                            onClick={() => handleRemoveExpenseClick(expense.id)}
                           >
                             Remove
                           </button>
@@ -803,7 +1029,7 @@ export default function StationSettlementUnified() {
             <h3>Summary ({activeCurrency})</h3>
             <div className="summary-grid">
               <div className="summary-row">
-                <span>Opening Balance (prior variance):</span>
+                <span>Opening Balance</span>
                 <span className="amount">{formatCurrency(currentSummary.opening_balance)}</span>
               </div>
               <div className="summary-row">
@@ -864,6 +1090,37 @@ export default function StationSettlementUnified() {
             setTimeout(() => setSuccess(''), 3000);
           }}
         />
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{confirmModalConfig.title}</h3>
+              <button className="modal-close" onClick={() => setShowConfirmModal(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p className="confirm-message">{confirmModalConfig.message}</p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={confirmModalConfig.confirmClass}
+                onClick={confirmModalConfig.onConfirm}
+              >
+                {confirmModalConfig.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,12 @@
 // src/config/db.js
 require('dotenv').config();
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Configure pg to return DATE as string (YYYY-MM-DD) instead of JavaScript Date
+// This prevents timezone conversion issues
+types.setTypeParser(1082, (val) => val); // DATE type
+types.setTypeParser(1114, (val) => val); // TIMESTAMP WITHOUT TIME ZONE
+types.setTypeParser(1184, (val) => val); // TIMESTAMP WITH TIME ZONE
 
 // Determine if we're in production (Render) or local development
 const isProduction = process.env.NODE_ENV === 'production';
@@ -38,9 +44,11 @@ if (isProduction && process.env.DATABASE_URL) {
 // Create a single connection pool
 const pool = new Pool(poolConfig);
 
-// Log connection success / failure
-pool.on('connect', () => {
+// Log connection success / failure and set timezone
+pool.on('connect', (client) => {
   console.log('✅ Connected to PostgreSQL database');
+  // Set timezone to Africa/Juba (UTC+2) for this connection
+  client.query("SET timezone = 'Africa/Juba'");
 });
 
 pool.on('error', (err) => {

@@ -1,22 +1,27 @@
 @echo off
-REM Stop all Node.js processes for Kush Air
+REM Stop Kush Air servers on specific ports (3000 and 5001)
 
 echo ========================================================
 echo    STOPPING KUSH AIR SERVERS
 echo ========================================================
 echo.
 
-echo Stopping all Node.js processes...
+REM Stop frontend on port 3000
+echo Stopping frontend server (port 3000)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
+    taskkill /F /PID %%a >nul 2>&1
+    if not errorlevel 1 echo [OK] Frontend stopped (PID: %%a)
+)
 
-REM Kill all node processes
-taskkill /F /IM node.exe >nul 2>&1
-
-if %errorLevel% equ 0 (
-    echo [OK] All servers stopped
-) else (
-    echo [!] No running servers found
+REM Stop backend on port 5001
+echo Stopping backend server (port 5001)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5001 ^| findstr LISTENING') do (
+    taskkill /F /PID %%a >nul 2>&1
+    if not errorlevel 1 echo [OK] Backend stopped (PID: %%a)
 )
 
 echo.
+echo ========================================================
+echo Servers stopped.
 echo ========================================================
 pause
