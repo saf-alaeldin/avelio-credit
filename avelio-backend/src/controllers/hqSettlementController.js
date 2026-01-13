@@ -1,15 +1,15 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 
-// Helper: Log HQ settlement action
-async function logHQSettlementAction(client, hqSettlementId, userId, action, fieldChanged, oldValue, newValue, notes, ipAddress) {
+// Helper: Log station summary action
+async function logStationSummaryAction(client, summaryId, userId, action, fieldChanged, oldValue, newValue, notes, ipAddress) {
   try {
     await client.query(
       `INSERT INTO hq_settlement_audit_logs
        (hq_settlement_id, user_id, action, field_changed, old_value, new_value, notes, ip_address)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
-        hqSettlementId,
+        summaryId,
         userId,
         action,
         fieldChanged || null,
@@ -20,131 +20,116 @@ async function logHQSettlementAction(client, hqSettlementId, userId, action, fie
       ]
     );
   } catch (error) {
-    logger.error('HQ Settlement audit log error:', { error: error.message });
+    logger.error('Station Summary audit log error:', { error: error.message });
   }
 }
 
-// Helper: Calculate HQ settlement summary
-async function calculateHQSettlementSummary(client, hqSettlementId) {
-  // Get all station settlements linked to this HQ settlement
-  const stationSettlements = await client.query(
-    `SELECT ss.*, s.station_code, s.station_name
-     FROM hq_settlement_stations hss
-     JOIN settlements ss ON hss.station_settlement_id = ss.id
-     JOIN stations s ON ss.station_id = s.id
-     WHERE hss.hq_settlement_id = $1`,
-    [hqSettlementId]
+// Helper: Get opening balance from previous CLOSED summary
+async function getOpeningBalance(client, summaryDate, currency) {
+  const result = await client.query(
+    `SELECT hss.safe_amount
+     FROM hq_settlement_summaries hss
+     JOIN hq_settlements hs ON hss.hq_settlement_id = hs.id
+     WHERE hs.status = 'CLOSED'
+       AND hs.summary_date < $1
+       AND hss.currency = $2
+     ORDER BY hs.summary_date DESC
+     LIMIT 1`,
+    [summaryDate, currency]
   );
+  return result.rows.length > 0 ? parseFloat(result.rows[0].safe_amount) : 0;
+}
 
-  // Get unique currencies from all station settlements
-  const currenciesResult = await client.query(
-    `SELECT DISTINCT ssum.currency
-     FROM hq_settlement_stations hss
-     JOIN settlement_summaries ssum ON hss.station_settlement_id = ssum.settlement_id
-     WHERE hss.hq_settlement_id = $1`,
-    [hqSettlementId]
+// Helper: Get cash from all SUBMITTED station settlements for a date
+async function getCashFromStations(client, summaryDate, currency) {
+  // Use station_declared_cash which is the cash sent value entered by stations
+  // For Juba (with agents), this should match agent totals
+  // For non-Juba stations, this is the only source of cash sent
+  const result = await client.query(
+    `SELECT COALESCE(SUM(COALESCE(ss.station_declared_cash, ss.actual_cash_received)), 0) as total_cash
+     FROM settlement_summaries ss
+     JOIN settlements s ON ss.settlement_id = s.id
+     WHERE s.status IN ('SUBMITTED', 'REVIEW')
+       AND s.period_to = $1
+       AND ss.currency = $2`,
+    [summaryDate, currency]
   );
+  return parseFloat(result.rows[0].total_cash);
+}
 
-  for (const { currency } of currenciesResult.rows) {
-    // Aggregate station settlement summaries
-    const stationSummary = await client.query(
-      `SELECT
-         COUNT(DISTINCT ssum.settlement_id) as stations_count,
-         COALESCE(SUM(ssum.expected_cash), 0) as total_expected,
-         COALESCE(SUM(ssum.actual_cash_received), 0) as total_actual,
-         COALESCE(SUM(ssum.total_expenses), 0) as total_expenses,
-         COALESCE(SUM(ssum.expected_net_cash), 0) as total_net
-       FROM hq_settlement_stations hss
-       JOIN settlement_summaries ssum ON hss.station_settlement_id = ssum.settlement_id
-       WHERE hss.hq_settlement_id = $1 AND ssum.currency = $2`,
-      [hqSettlementId, currency]
-    );
+// Helper: Calculate Station Summary (updated for new structure)
+async function calculateStationSummary(client, summaryId, summaryDate) {
+  const currencies = ['USD', 'SSP'];
+
+  for (const currency of currencies) {
+    // Get opening balance from previous CLOSED summary
+    const openingBalance = await getOpeningBalance(client, summaryDate, currency);
+
+    // Get cash from all SUBMITTED station settlements for this date
+    const cashFromStations = await getCashFromStations(client, summaryDate, currency);
 
     // Get HQ-level expenses
     const hqExpenses = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_hq_expenses
        FROM hq_settlement_expenses
        WHERE hq_settlement_id = $1 AND currency = $2`,
-      [hqSettlementId, currency]
+      [summaryId, currency]
     );
+    const totalHQExpenses = parseFloat(hqExpenses.rows[0].total_hq_expenses);
 
-    const stationData = stationSummary.rows[0];
-    const hqExpensesTotal = parseFloat(hqExpenses.rows[0].total_hq_expenses);
+    // Calculate totals
+    const totalAvailable = openingBalance + cashFromStations;
+    const safeAmount = totalAvailable - totalHQExpenses;
 
-    const totalStationExpected = parseFloat(stationData.total_expected);
-    const totalStationActual = parseFloat(stationData.total_actual);
-    const totalStationExpenses = parseFloat(stationData.total_expenses);
-    const totalStationNet = parseFloat(stationData.total_net);
-
-    // Grand totals (include HQ expenses)
-    const grandExpected = totalStationExpected;
-    const grandActual = totalStationActual;
-    const grandNet = totalStationNet - hqExpensesTotal;
-    const finalVariance = grandActual - grandNet;
-
-    // Determine variance status
-    let varianceStatus = 'PENDING';
-    if (stationData.stations_count > 0) {
-      if (finalVariance === 0) {
-        varianceStatus = 'BALANCED';
-      } else if (finalVariance < 0) {
-        varianceStatus = 'SHORT';
-      } else {
-        varianceStatus = 'EXTRA';
-      }
-    }
+    // Get station settlements count for this currency
+    const stationCount = await client.query(
+      `SELECT COUNT(DISTINCT s.id) as count
+       FROM settlements s
+       JOIN settlement_summaries ss ON s.id = ss.settlement_id
+       WHERE s.status = 'SUBMITTED'
+         AND s.period_to = $1
+         AND ss.currency = $2`,
+      [summaryDate, currency]
+    );
 
     // Upsert summary
     await client.query(
       `INSERT INTO hq_settlement_summaries
-       (hq_settlement_id, currency, total_stations_count,
-        total_station_expected_cash, total_station_actual_cash, total_station_expenses, total_station_net_cash,
-        total_hq_expenses, grand_expected_cash, grand_actual_cash, grand_net_cash,
-        final_variance, variance_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       (hq_settlement_id, currency, opening_balance, cash_from_stations, total_available,
+        total_hq_expenses, safe_amount, total_stations_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (hq_settlement_id, currency)
        DO UPDATE SET
-         total_stations_count = EXCLUDED.total_stations_count,
-         total_station_expected_cash = EXCLUDED.total_station_expected_cash,
-         total_station_actual_cash = EXCLUDED.total_station_actual_cash,
-         total_station_expenses = EXCLUDED.total_station_expenses,
-         total_station_net_cash = EXCLUDED.total_station_net_cash,
+         opening_balance = EXCLUDED.opening_balance,
+         cash_from_stations = EXCLUDED.cash_from_stations,
+         total_available = EXCLUDED.total_available,
          total_hq_expenses = EXCLUDED.total_hq_expenses,
-         grand_expected_cash = EXCLUDED.grand_expected_cash,
-         grand_actual_cash = EXCLUDED.grand_actual_cash,
-         grand_net_cash = EXCLUDED.grand_net_cash,
-         final_variance = EXCLUDED.final_variance,
-         variance_status = EXCLUDED.variance_status,
+         safe_amount = EXCLUDED.safe_amount,
+         total_stations_count = EXCLUDED.total_stations_count,
          updated_at = CURRENT_TIMESTAMP`,
       [
-        hqSettlementId,
+        summaryId,
         currency,
-        parseInt(stationData.stations_count),
-        totalStationExpected,
-        totalStationActual,
-        totalStationExpenses,
-        totalStationNet,
-        hqExpensesTotal,
-        grandExpected,
-        grandActual,
-        grandNet,
-        finalVariance,
-        varianceStatus
+        openingBalance,
+        cashFromStations,
+        totalAvailable,
+        totalHQExpenses,
+        safeAmount,
+        parseInt(stationCount.rows[0].count)
       ]
     );
   }
 }
 
-// GET all HQ settlements
+// GET all Station Summaries
 const getHQSettlements = async (req, res) => {
   try {
     const { status, date_from, date_to, page = 1, pageSize = 20 } = req.query;
 
     let query = `
-      SELECT hs.*, u1.name as created_by_name, u2.name as reviewed_by_name
+      SELECT hs.*, u1.name as created_by_name
       FROM hq_settlements hs
       LEFT JOIN users u1 ON hs.created_by = u1.id
-      LEFT JOIN users u2 ON hs.reviewed_by = u2.id
       WHERE 1=1
     `;
     const params = [];
@@ -156,12 +141,12 @@ const getHQSettlements = async (req, res) => {
     }
 
     if (date_from) {
-      query += ` AND hs.period_from >= $${paramIndex++}`;
+      query += ` AND hs.summary_date >= $${paramIndex++}`;
       params.push(date_from);
     }
 
     if (date_to) {
-      query += ` AND hs.period_to <= $${paramIndex++}`;
+      query += ` AND hs.summary_date <= $${paramIndex++}`;
       params.push(date_to);
     }
 
@@ -172,60 +157,52 @@ const getHQSettlements = async (req, res) => {
 
     // Add pagination
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    query += ` ORDER BY hs.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    query += ` ORDER BY hs.summary_date DESC, hs.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
     params.push(parseInt(pageSize), offset);
 
     const result = await db.query(query, params);
 
-    // Get summaries for each HQ settlement
-    const settlements = [];
+    // Get summaries for each station summary
+    const summaries = [];
     for (const row of result.rows) {
-      const summaries = await db.query(
+      const summaryData = await db.query(
         `SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1`,
         [row.id]
       );
 
-      const stationsCount = await db.query(
-        `SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1`,
-        [row.id]
-      );
-
-      settlements.push({
+      summaries.push({
         ...row,
-        stations_count: parseInt(stationsCount.rows[0].count),
-        summaries: summaries.rows
+        summaries: summaryData.rows
       });
     }
 
     res.json({
       success: true,
-      count: settlements.length,
+      count: summaries.length,
       total,
       page: parseInt(page),
       pageSize: parseInt(pageSize),
-      data: settlements
+      data: summaries
     });
   } catch (error) {
-    logger.error('Get HQ settlements error:', { error: error.message });
+    logger.error('Get Station Summaries error:', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch HQ settlements'
+      message: 'Failed to fetch station summaries'
     });
   }
 };
 
-// GET single HQ settlement with full details
+// GET single Station Summary with full details
 const getHQSettlementById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get HQ settlement
+    // Get station summary
     const result = await db.query(
-      `SELECT hs.*, u1.name as created_by_name, u2.name as submitted_by_name, u3.name as reviewed_by_name
+      `SELECT hs.*, u1.name as created_by_name
        FROM hq_settlements hs
        LEFT JOIN users u1 ON hs.created_by = u1.id
-       LEFT JOIN users u2 ON hs.submitted_by = u2.id
-       LEFT JOIN users u3 ON hs.reviewed_by = u3.id
        WHERE hs.id = $1`,
       [id]
     );
@@ -233,30 +210,46 @@ const getHQSettlementById = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'HQ Settlement not found'
+        message: 'Station Summary not found'
       });
     }
 
-    const hqSettlement = result.rows[0];
+    const stationSummary = result.rows[0];
+    const summaryDate = stationSummary.summary_date || stationSummary.period_from;
 
-    // Get station settlements
+    // Auto-recalculate if DRAFT (to pick up new settlements)
+    if (stationSummary.status === 'DRAFT') {
+      const client = await db.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await calculateStationSummary(client, id, summaryDate);
+        await client.query('COMMIT');
+      } catch (calcError) {
+        await client.query('ROLLBACK');
+        logger.error('Auto-recalculate error:', { error: calcError.message });
+      } finally {
+        client.release();
+      }
+    }
+
+    // Get auto-included SUBMITTED station settlements for this date
     const stationSettlements = await db.query(
-      `SELECT hss.id as link_id, s.*, st.station_code, st.station_name
-       FROM hq_settlement_stations hss
-       JOIN settlements s ON hss.station_settlement_id = s.id
+      `SELECT s.*, st.station_code, st.station_name
+       FROM settlements s
        JOIN stations st ON s.station_id = st.id
-       WHERE hss.hq_settlement_id = $1
+       WHERE s.status = 'SUBMITTED'
+         AND s.period_to = $1
        ORDER BY st.station_name`,
-      [id]
+      [summaryDate]
     );
 
-    // Get station summaries for each
+    // Get summaries for each station settlement
     for (let i = 0; i < stationSettlements.rows.length; i++) {
-      const stationSummaries = await db.query(
+      const settlementSummaries = await db.query(
         `SELECT * FROM settlement_summaries WHERE settlement_id = $1`,
         [stationSettlements.rows[i].id]
       );
-      stationSettlements.rows[i].summaries = stationSummaries.rows;
+      stationSettlements.rows[i].summaries = settlementSummaries.rows;
     }
 
     // Get HQ expenses
@@ -270,7 +263,7 @@ const getHQSettlementById = async (req, res) => {
       [id]
     );
 
-    // Get HQ summaries
+    // Get summaries
     const summaries = await db.query(
       `SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1 ORDER BY currency`,
       [id]
@@ -290,8 +283,8 @@ const getHQSettlementById = async (req, res) => {
     res.json({
       success: true,
       data: {
-        hq_settlement: {
-          ...hqSettlement,
+        station_summary: {
+          ...stationSummary,
           station_settlements: stationSettlements.rows,
           expenses: expenses.rows,
           summaries: summaries.rows,
@@ -300,31 +293,37 @@ const getHQSettlementById = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Get HQ settlement error:', { error: error.message });
+    logger.error('Get Station Summary error:', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch HQ settlement'
+      message: 'Failed to fetch station summary'
     });
   }
 };
 
-// CREATE new HQ settlement
+// CREATE new Station Summary
 const createHQSettlement = async (req, res) => {
   try {
-    const { period_from, period_to } = req.body;
+    const { summary_date } = req.body;
     const userId = req.user.id;
 
-    if (!period_from || !period_to) {
+    if (!summary_date) {
       return res.status(400).json({
         success: false,
-        message: 'period_from and period_to are required'
+        message: 'summary_date is required'
       });
     }
 
-    if (new Date(period_from) > new Date(period_to)) {
+    // Check if summary already exists for this date
+    const existing = await db.query(
+      'SELECT id FROM hq_settlements WHERE summary_date = $1',
+      [summary_date]
+    );
+
+    if (existing.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'period_from must be before or equal to period_to'
+        message: 'A station summary already exists for this date'
       });
     }
 
@@ -336,38 +335,52 @@ const createHQSettlement = async (req, res) => {
       // Generate settlement number
       const settlementNumber = await client.query(
         'SELECT generate_hq_settlement_number($1) as number',
-        [period_from]
+        [summary_date]
       );
 
-      // Create HQ settlement
+      // Create station summary
       const result = await client.query(
-        `INSERT INTO hq_settlements (settlement_number, period_from, period_to, status, created_by)
-         VALUES ($1, $2, $3, 'DRAFT', $4)
+        `INSERT INTO hq_settlements (settlement_number, summary_date, period_from, period_to, status, created_by)
+         VALUES ($1, $2, $2, $2, 'DRAFT', $3)
          RETURNING *`,
-        [settlementNumber.rows[0].number, period_from, period_to, userId]
+        [settlementNumber.rows[0].number, summary_date, userId]
       );
 
-      const hqSettlement = result.rows[0];
+      const stationSummary = result.rows[0];
+
+      // Calculate initial summary (auto-include SUBMITTED settlements)
+      await calculateStationSummary(client, stationSummary.id, summary_date);
 
       // Log action
-      await logHQSettlementAction(
+      await logStationSummaryAction(
         client,
-        hqSettlement.id,
+        stationSummary.id,
         userId,
         'CREATE',
         null,
         null,
-        { settlement_number: hqSettlement.settlement_number, period_from, period_to },
-        'HQ Settlement created',
+        { settlement_number: stationSummary.settlement_number, summary_date },
+        'Station Summary created',
         req.ip
       );
 
       await client.query('COMMIT');
+
+      // Get full details
+      const summaries = await db.query(
+        'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+        [stationSummary.id]
+      );
 
       res.status(201).json({
         success: true,
-        message: 'HQ Settlement created successfully',
-        data: { hq_settlement: hqSettlement }
+        message: 'Station Summary created successfully',
+        data: {
+          station_summary: {
+            ...stationSummary,
+            summaries: summaries.rows
+          }
+        }
       });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -376,225 +389,10 @@ const createHQSettlement = async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error('Create HQ settlement error:', { error: error.message });
+    logger.error('Create Station Summary error:', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to create HQ settlement'
-    });
-  }
-};
-
-// ADD station settlement to HQ settlement
-const addStationSettlement = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { station_settlement_id } = req.body;
-    const userId = req.user.id;
-
-    if (!station_settlement_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'station_settlement_id is required'
-      });
-    }
-
-    const client = await db.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      // Verify HQ settlement exists and is in DRAFT status
-      const hqSettlement = await client.query(
-        'SELECT * FROM hq_settlements WHERE id = $1',
-        [id]
-      );
-
-      if (hqSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({
-          success: false,
-          message: 'HQ Settlement not found'
-        });
-      }
-
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'Can only add stations to DRAFT HQ settlements'
-        });
-      }
-
-      // Verify station settlement exists and is APPROVED or CLOSED
-      const stationSettlement = await client.query(
-        `SELECT s.*, st.station_code, st.station_name
-         FROM settlements s
-         JOIN stations st ON s.station_id = st.id
-         WHERE s.id = $1`,
-        [station_settlement_id]
-      );
-
-      if (stationSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({
-          success: false,
-          message: 'Station settlement not found'
-        });
-      }
-
-      if (!['APPROVED', 'CLOSED'].includes(stationSettlement.rows[0].status)) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'Only APPROVED or CLOSED station settlements can be added'
-        });
-      }
-
-      // Check if already linked
-      const existingLink = await client.query(
-        `SELECT id FROM hq_settlement_stations
-         WHERE hq_settlement_id = $1 AND station_settlement_id = $2`,
-        [id, station_settlement_id]
-      );
-
-      if (existingLink.rows.length > 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'Station settlement is already in this HQ settlement'
-        });
-      }
-
-      // Add link
-      await client.query(
-        `INSERT INTO hq_settlement_stations (hq_settlement_id, station_settlement_id)
-         VALUES ($1, $2)`,
-        [id, station_settlement_id]
-      );
-
-      // Recalculate summary
-      await calculateHQSettlementSummary(client, id);
-
-      // Log action
-      await logHQSettlementAction(
-        client,
-        id,
-        userId,
-        'ADD_STATION',
-        null,
-        null,
-        {
-          station_settlement_id,
-          station_code: stationSettlement.rows[0].station_code,
-          settlement_number: stationSettlement.rows[0].settlement_number
-        },
-        `Added station settlement ${stationSettlement.rows[0].settlement_number}`,
-        req.ip
-      );
-
-      await client.query('COMMIT');
-
-      res.json({
-        success: true,
-        message: 'Station settlement added successfully'
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    logger.error('Add station settlement error:', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add station settlement'
-    });
-  }
-};
-
-// REMOVE station settlement from HQ settlement
-const removeStationSettlement = async (req, res) => {
-  try {
-    const { id, stationSettlementId } = req.params;
-    const userId = req.user.id;
-
-    const client = await db.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      // Verify HQ settlement exists and is in DRAFT status
-      const hqSettlement = await client.query(
-        'SELECT status FROM hq_settlements WHERE id = $1',
-        [id]
-      );
-
-      if (hqSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({
-          success: false,
-          message: 'HQ Settlement not found'
-        });
-      }
-
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: 'Can only remove stations from DRAFT HQ settlements'
-        });
-      }
-
-      // Remove link
-      const result = await client.query(
-        `DELETE FROM hq_settlement_stations
-         WHERE hq_settlement_id = $1 AND station_settlement_id = $2
-         RETURNING *`,
-        [id, stationSettlementId]
-      );
-
-      if (result.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({
-          success: false,
-          message: 'Station settlement link not found'
-        });
-      }
-
-      // Recalculate summary
-      await calculateHQSettlementSummary(client, id);
-
-      // Log action
-      await logHQSettlementAction(
-        client,
-        id,
-        userId,
-        'REMOVE_STATION',
-        null,
-        { station_settlement_id: stationSettlementId },
-        null,
-        'Removed station settlement',
-        req.ip
-      );
-
-      await client.query('COMMIT');
-
-      res.json({
-        success: true,
-        message: 'Station settlement removed successfully'
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    logger.error('Remove station settlement error:', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove station settlement'
+      message: 'Failed to create station summary'
     });
   }
 };
@@ -625,25 +423,25 @@ const addHQExpense = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Verify HQ settlement exists and is in DRAFT status
-      const hqSettlement = await client.query(
-        'SELECT status FROM hq_settlements WHERE id = $1',
+      // Verify station summary exists and is in DRAFT status
+      const stationSummary = await client.query(
+        'SELECT status, summary_date, period_from FROM hq_settlements WHERE id = $1',
         [id]
       );
 
-      if (hqSettlement.rows.length === 0) {
+      if (stationSummary.rows.length === 0) {
         await client.query('ROLLBACK');
         return res.status(404).json({
           success: false,
-          message: 'HQ Settlement not found'
+          message: 'Station Summary not found'
         });
       }
 
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
+      if (stationSummary.rows[0].status !== 'DRAFT') {
         await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
-          message: 'Can only add expenses to DRAFT HQ settlements'
+          message: 'Can only add expenses to DRAFT station summaries'
         });
       }
 
@@ -661,13 +459,34 @@ const addHQExpense = async (req, res) => {
         });
       }
 
-      // Check currency is allowed
+      // Check currency is allowed by expense code
       if (!expenseCode.rows[0].currencies_allowed.includes(currency)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
           message: `Expense code does not allow ${currency} currency`
         });
+      }
+
+      // Check that currency has cash from stations or opening balance
+      const currencySummary = await client.query(
+        `SELECT opening_balance, cash_from_stations
+         FROM hq_settlement_summaries
+         WHERE hq_settlement_id = $1 AND currency = $2`,
+        [id, currency]
+      );
+
+      if (currencySummary.rows.length > 0) {
+        const openingBalance = parseFloat(currencySummary.rows[0].opening_balance || 0);
+        const cashFromStations = parseFloat(currencySummary.rows[0].cash_from_stations || 0);
+
+        if (openingBalance <= 0 && cashFromStations <= 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: `Cannot add expense in ${currency} - no cash from stations or opening balance in this currency`
+          });
+        }
       }
 
       // Add expense
@@ -679,10 +498,11 @@ const addHQExpense = async (req, res) => {
       );
 
       // Recalculate summary
-      await calculateHQSettlementSummary(client, id);
+      const summaryDate = stationSummary.rows[0].summary_date || stationSummary.rows[0].period_from;
+      await calculateStationSummary(client, id, summaryDate);
 
       // Log action
-      await logHQSettlementAction(
+      await logStationSummaryAction(
         client,
         id,
         userId,
@@ -690,7 +510,7 @@ const addHQExpense = async (req, res) => {
         null,
         null,
         { expense_code: expenseCode.rows[0].code, amount, currency },
-        `Added HQ expense: ${expenseCode.rows[0].code}`,
+        `Added expense: ${expenseCode.rows[0].code}`,
         req.ip
       );
 
@@ -707,7 +527,7 @@ const addHQExpense = async (req, res) => {
 
       res.status(201).json({
         success: true,
-        message: 'HQ Expense added successfully',
+        message: 'Expense added successfully',
         data: { expense: expense.rows[0] }
       });
     } catch (error) {
@@ -717,10 +537,10 @@ const addHQExpense = async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error('Add HQ expense error:', { error: error.message });
+    logger.error('Add expense error:', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to add HQ expense'
+      message: 'Failed to add expense'
     });
   }
 };
@@ -736,25 +556,25 @@ const removeHQExpense = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Verify HQ settlement is in DRAFT status
-      const hqSettlement = await client.query(
-        'SELECT status FROM hq_settlements WHERE id = $1',
+      // Verify station summary is in DRAFT status
+      const stationSummary = await client.query(
+        'SELECT status, summary_date, period_from FROM hq_settlements WHERE id = $1',
         [id]
       );
 
-      if (hqSettlement.rows.length === 0) {
+      if (stationSummary.rows.length === 0) {
         await client.query('ROLLBACK');
         return res.status(404).json({
           success: false,
-          message: 'HQ Settlement not found'
+          message: 'Station Summary not found'
         });
       }
 
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
+      if (stationSummary.rows[0].status !== 'DRAFT') {
         await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
-          message: 'Can only remove expenses from DRAFT HQ settlements'
+          message: 'Can only remove expenses from DRAFT station summaries'
         });
       }
 
@@ -779,10 +599,11 @@ const removeHQExpense = async (req, res) => {
       await client.query('DELETE FROM hq_settlement_expenses WHERE id = $1', [expenseId]);
 
       // Recalculate summary
-      await calculateHQSettlementSummary(client, id);
+      const summaryDate = stationSummary.rows[0].summary_date || stationSummary.rows[0].period_from;
+      await calculateStationSummary(client, id, summaryDate);
 
       // Log action
-      await logHQSettlementAction(
+      await logStationSummaryAction(
         client,
         id,
         userId,
@@ -790,7 +611,7 @@ const removeHQExpense = async (req, res) => {
         null,
         { expense_code: expense.rows[0].expense_code, amount: expense.rows[0].amount },
         null,
-        `Removed HQ expense: ${expense.rows[0].expense_code}`,
+        `Removed expense: ${expense.rows[0].expense_code}`,
         req.ip
       );
 
@@ -798,7 +619,7 @@ const removeHQExpense = async (req, res) => {
 
       res.json({
         success: true,
-        message: 'HQ Expense removed successfully'
+        message: 'Expense removed successfully'
       });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -807,263 +628,15 @@ const removeHQExpense = async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error('Remove HQ expense error:', { error: error.message });
+    logger.error('Remove expense error:', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to remove HQ expense'
+      message: 'Failed to remove expense'
     });
   }
 };
 
-// GET available station settlements for HQ settlement
-const getAvailableStationSettlements = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { period_from, period_to } = req.query;
-
-    // Get HQ settlement period if ID provided
-    let fromDate = period_from;
-    let toDate = period_to;
-
-    if (id) {
-      const hqSettlement = await db.query(
-        'SELECT period_from, period_to FROM hq_settlements WHERE id = $1',
-        [id]
-      );
-
-      if (hqSettlement.rows.length > 0) {
-        fromDate = fromDate || hqSettlement.rows[0].period_from;
-        toDate = toDate || hqSettlement.rows[0].period_to;
-      }
-    }
-
-    // Get approved/closed station settlements within the period
-    let query = `
-      SELECT s.*, st.station_code, st.station_name,
-             (SELECT COUNT(*) FROM hq_settlement_stations WHERE station_settlement_id = s.id) > 0 as is_linked
-      FROM settlements s
-      JOIN stations st ON s.station_id = st.id
-      WHERE s.status IN ('APPROVED', 'CLOSED')
-    `;
-    const params = [];
-    let paramIndex = 1;
-
-    if (fromDate) {
-      query += ` AND s.period_from >= $${paramIndex++}`;
-      params.push(fromDate);
-    }
-
-    if (toDate) {
-      query += ` AND s.period_to <= $${paramIndex++}`;
-      params.push(toDate);
-    }
-
-    // Exclude settlements already in this HQ settlement
-    if (id) {
-      query += ` AND s.id NOT IN (SELECT station_settlement_id FROM hq_settlement_stations WHERE hq_settlement_id = $${paramIndex++})`;
-      params.push(id);
-    }
-
-    query += ' ORDER BY st.station_name, s.period_from';
-
-    const result = await db.query(query, params);
-
-    // Get summaries for each
-    for (let i = 0; i < result.rows.length; i++) {
-      const summaries = await db.query(
-        'SELECT * FROM settlement_summaries WHERE settlement_id = $1',
-        [result.rows[i].id]
-      );
-      result.rows[i].summaries = summaries.rows;
-    }
-
-    res.json({
-      success: true,
-      count: result.rows.length,
-      data: { station_settlements: result.rows }
-    });
-  } catch (error) {
-    logger.error('Get available station settlements error:', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch available station settlements'
-    });
-  }
-};
-
-// SUBMIT HQ settlement for review
-const submitHQSettlement = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-
-    const client = await db.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      // Verify exists and is DRAFT
-      const hqSettlement = await client.query(
-        'SELECT * FROM hq_settlements WHERE id = $1',
-        [id]
-      );
-
-      if (hqSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ success: false, message: 'HQ Settlement not found' });
-      }
-
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Can only submit DRAFT HQ settlements' });
-      }
-
-      // Check at least one station is included
-      const stationCount = await client.query(
-        'SELECT COUNT(*) FROM hq_settlement_stations WHERE hq_settlement_id = $1',
-        [id]
-      );
-
-      if (parseInt(stationCount.rows[0].count) === 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'At least one station settlement must be included' });
-      }
-
-      // Recalculate summary
-      await calculateHQSettlementSummary(client, id);
-
-      // Update status
-      await client.query(
-        `UPDATE hq_settlements
-         SET status = 'REVIEW', submitted_by = $1, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [userId, id]
-      );
-
-      await logHQSettlementAction(client, id, userId, 'SUBMIT', 'status', { status: 'DRAFT' }, { status: 'REVIEW' }, 'Submitted for review', req.ip);
-
-      await client.query('COMMIT');
-
-      res.json({ success: true, message: 'HQ Settlement submitted for review' });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    logger.error('Submit HQ settlement error:', { error: error.message });
-    res.status(500).json({ success: false, message: 'Failed to submit HQ settlement' });
-  }
-};
-
-// APPROVE HQ settlement
-const approveHQSettlement = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { approval_notes } = req.body;
-    const userId = req.user.id;
-
-    const client = await db.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      const hqSettlement = await client.query('SELECT * FROM hq_settlements WHERE id = $1', [id]);
-
-      if (hqSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ success: false, message: 'HQ Settlement not found' });
-      }
-
-      if (hqSettlement.rows[0].status !== 'REVIEW') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Can only approve REVIEW status HQ settlements' });
-      }
-
-      if (hqSettlement.rows[0].created_by === userId) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Cannot approve your own HQ settlement' });
-      }
-
-      await client.query(
-        `UPDATE hq_settlements
-         SET status = 'APPROVED', reviewed_by = $1, reviewed_at = CURRENT_TIMESTAMP, approval_notes = $2, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [userId, approval_notes || null, id]
-      );
-
-      await logHQSettlementAction(client, id, userId, 'APPROVE', 'status', { status: 'REVIEW' }, { status: 'APPROVED' }, approval_notes, req.ip);
-
-      await client.query('COMMIT');
-
-      res.json({ success: true, message: 'HQ Settlement approved' });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    logger.error('Approve HQ settlement error:', { error: error.message });
-    res.status(500).json({ success: false, message: 'Failed to approve HQ settlement' });
-  }
-};
-
-// REJECT HQ settlement
-const rejectHQSettlement = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rejection_reason } = req.body;
-    const userId = req.user.id;
-
-    if (!rejection_reason) {
-      return res.status(400).json({ success: false, message: 'Rejection reason is required' });
-    }
-
-    const client = await db.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      const hqSettlement = await client.query('SELECT * FROM hq_settlements WHERE id = $1', [id]);
-
-      if (hqSettlement.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ success: false, message: 'HQ Settlement not found' });
-      }
-
-      if (hqSettlement.rows[0].status !== 'REVIEW') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Can only reject REVIEW status HQ settlements' });
-      }
-
-      await client.query(
-        `UPDATE hq_settlements
-         SET status = 'DRAFT', reviewed_by = $1, reviewed_at = CURRENT_TIMESTAMP, rejection_reason = $2,
-             submitted_by = NULL, submitted_at = NULL, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [userId, rejection_reason, id]
-      );
-
-      await logHQSettlementAction(client, id, userId, 'REJECT', 'status', { status: 'REVIEW' }, { status: 'DRAFT' }, rejection_reason, req.ip);
-
-      await client.query('COMMIT');
-
-      res.json({ success: true, message: 'HQ Settlement rejected' });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    logger.error('Reject HQ settlement error:', { error: error.message });
-    res.status(500).json({ success: false, message: 'Failed to reject HQ settlement' });
-  }
-};
-
-// CLOSE HQ settlement
+// CLOSE Station Summary (DRAFT -> CLOSED)
 const closeHQSettlement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1074,28 +647,46 @@ const closeHQSettlement = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      const hqSettlement = await client.query('SELECT status FROM hq_settlements WHERE id = $1', [id]);
+      const stationSummary = await client.query(
+        'SELECT status, summary_date, period_from FROM hq_settlements WHERE id = $1',
+        [id]
+      );
 
-      if (hqSettlement.rows.length === 0) {
+      if (stationSummary.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ success: false, message: 'HQ Settlement not found' });
+        return res.status(404).json({ success: false, message: 'Station Summary not found' });
       }
 
-      if (hqSettlement.rows[0].status !== 'APPROVED') {
+      if (stationSummary.rows[0].status !== 'DRAFT') {
         await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Can only close APPROVED HQ settlements' });
+        return res.status(400).json({ success: false, message: 'Can only close DRAFT station summaries' });
       }
 
+      // Recalculate summary one last time before closing
+      const summaryDate = stationSummary.rows[0].summary_date || stationSummary.rows[0].period_from;
+      await calculateStationSummary(client, id, summaryDate);
+
+      // Update status to CLOSED
       await client.query(
         'UPDATE hq_settlements SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
         ['CLOSED', id]
       );
 
-      await logHQSettlementAction(client, id, userId, 'CLOSE', 'status', { status: 'APPROVED' }, { status: 'CLOSED' }, 'HQ Settlement closed', req.ip);
+      await logStationSummaryAction(
+        client,
+        id,
+        userId,
+        'CLOSE',
+        'status',
+        { status: 'DRAFT' },
+        { status: 'CLOSED' },
+        'Station Summary closed - safe amounts locked as next day opening balance',
+        req.ip
+      );
 
       await client.query('COMMIT');
 
-      res.json({ success: true, message: 'HQ Settlement closed' });
+      res.json({ success: true, message: 'Station Summary closed successfully. Safe amounts are now locked.' });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -1103,12 +694,12 @@ const closeHQSettlement = async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error('Close HQ settlement error:', { error: error.message });
-    res.status(500).json({ success: false, message: 'Failed to close HQ settlement' });
+    logger.error('Close Station Summary error:', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to close station summary' });
   }
 };
 
-// DELETE HQ settlement (DRAFT only)
+// DELETE Station Summary (DRAFT only)
 const deleteHQSettlement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1118,23 +709,23 @@ const deleteHQSettlement = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      const hqSettlement = await client.query('SELECT status FROM hq_settlements WHERE id = $1', [id]);
+      const stationSummary = await client.query('SELECT status FROM hq_settlements WHERE id = $1', [id]);
 
-      if (hqSettlement.rows.length === 0) {
+      if (stationSummary.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ success: false, message: 'HQ Settlement not found' });
+        return res.status(404).json({ success: false, message: 'Station Summary not found' });
       }
 
-      if (hqSettlement.rows[0].status !== 'DRAFT') {
+      if (stationSummary.rows[0].status !== 'DRAFT') {
         await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Can only delete DRAFT HQ settlements' });
+        return res.status(400).json({ success: false, message: 'Can only delete DRAFT station summaries' });
       }
 
       await client.query('DELETE FROM hq_settlements WHERE id = $1', [id]);
 
       await client.query('COMMIT');
 
-      res.json({ success: true, message: 'HQ Settlement deleted' });
+      res.json({ success: true, message: 'Station Summary deleted' });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -1142,8 +733,237 @@ const deleteHQSettlement = async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error('Delete HQ settlement error:', { error: error.message });
-    res.status(500).json({ success: false, message: 'Failed to delete HQ settlement' });
+    logger.error('Delete Station Summary error:', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to delete station summary' });
+  }
+};
+
+// Recalculate summary (for when station settlements are updated)
+const recalculateSummary = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const stationSummary = await client.query(
+        'SELECT status, summary_date, period_from FROM hq_settlements WHERE id = $1',
+        [id]
+      );
+
+      if (stationSummary.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, message: 'Station Summary not found' });
+      }
+
+      if (stationSummary.rows[0].status !== 'DRAFT') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, message: 'Can only recalculate DRAFT station summaries' });
+      }
+
+      const summaryDate = stationSummary.rows[0].summary_date || stationSummary.rows[0].period_from;
+      await calculateStationSummary(client, id, summaryDate);
+
+      await client.query('COMMIT');
+
+      // Get updated summaries
+      const summaries = await db.query(
+        'SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1',
+        [id]
+      );
+
+      res.json({
+        success: true,
+        message: 'Summary recalculated',
+        data: { summaries: summaries.rows }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Recalculate summary error:', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to recalculate summary' });
+  }
+};
+
+// GET expense codes (for dropdown)
+const getExpenseCodes = async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM expense_codes WHERE is_active = true ORDER BY category, name`
+    );
+
+    res.json({
+      success: true,
+      data: { expense_codes: result.rows }
+    });
+  } catch (error) {
+    logger.error('Get expense codes error:', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch expense codes' });
+  }
+};
+
+// GET or CREATE Station Summary for a date (auto-create if doesn't exist)
+const getOrCreateByDate = async (req, res) => {
+  console.log('=== getOrCreateByDate called ===');
+  console.log('Query params:', req.query);
+  console.log('User:', req.user);
+
+  try {
+    const { date } = req.query;
+    const userId = req.user?.id;
+
+    console.log('Date:', date, 'UserId:', userId);
+
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: 'date is required'
+      });
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+
+    console.log('Connecting to database...');
+    const client = await db.pool.connect();
+    console.log('Connected!');
+
+    try {
+      await client.query('BEGIN');
+
+      // Check if summary exists for this date
+      let stationSummary = await client.query(
+        'SELECT * FROM hq_settlements WHERE summary_date = $1',
+        [date]
+      );
+
+      let summaryId;
+      let isNew = false;
+
+      if (stationSummary.rows.length === 0) {
+        // Auto-create a new Station Summary
+        const settlementNumber = await client.query(
+          'SELECT generate_hq_settlement_number($1) as number',
+          [date]
+        );
+
+        const result = await client.query(
+          `INSERT INTO hq_settlements (settlement_number, summary_date, period_from, period_to, status, created_by)
+           VALUES ($1, $2, $2, $2, 'DRAFT', $3)
+           RETURNING *`,
+          [settlementNumber.rows[0].number, date, userId]
+        );
+
+        stationSummary = { rows: [result.rows[0]] };
+        summaryId = result.rows[0].id;
+        isNew = true;
+
+        // Log creation
+        await logStationSummaryAction(
+          client,
+          summaryId,
+          userId,
+          'CREATE',
+          null,
+          null,
+          { settlement_number: result.rows[0].settlement_number, summary_date: date },
+          'Station Summary auto-created',
+          req.ip
+        );
+      } else {
+        summaryId = stationSummary.rows[0].id;
+      }
+
+      // Calculate/recalculate summary (picks up any new SUBMITTED settlements)
+      console.log('Calculating summary...');
+      await calculateStationSummary(client, summaryId, date);
+      console.log('Summary calculated!');
+
+      console.log('Committing transaction...');
+      await client.query('COMMIT');
+      console.log('Committed!');
+
+      // Get full details including station settlements and expenses
+      const fullSummary = await client.query(
+        `SELECT hs.*, u1.name as created_by_name
+         FROM hq_settlements hs
+         LEFT JOIN users u1 ON hs.created_by = u1.id
+         WHERE hs.id = $1`,
+        [summaryId]
+      );
+
+      // Get auto-included SUBMITTED station settlements for this date
+      const stationSettlements = await db.query(
+        `SELECT s.*, st.station_code, st.station_name
+         FROM settlements s
+         JOIN stations st ON s.station_id = st.id
+         WHERE s.status IN ('SUBMITTED', 'REVIEW', 'APPROVED', 'APPROVED_WITH_VARIANCE')
+           AND s.period_to = $1
+         ORDER BY st.station_name`,
+        [date]
+      );
+
+      // Get summaries for each station settlement
+      for (let i = 0; i < stationSettlements.rows.length; i++) {
+        const settlementSummaries = await db.query(
+          `SELECT * FROM settlement_summaries WHERE settlement_id = $1`,
+          [stationSettlements.rows[i].id]
+        );
+        stationSettlements.rows[i].summaries = settlementSummaries.rows;
+      }
+
+      // Get HQ expenses
+      const expenses = await db.query(
+        `SELECT he.*, ec.code as expense_code, ec.name as expense_name, ec.category, u.name as created_by_name
+         FROM hq_settlement_expenses he
+         JOIN expense_codes ec ON he.expense_code_id = ec.id
+         LEFT JOIN users u ON he.created_by = u.id
+         WHERE he.hq_settlement_id = $1
+         ORDER BY he.created_at DESC`,
+        [summaryId]
+      );
+
+      // Get summaries
+      const summaries = await db.query(
+        `SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1 ORDER BY currency`,
+        [summaryId]
+      );
+
+      res.json({
+        success: true,
+        is_new: isNew,
+        data: {
+          station_summary: {
+            ...fullSummary.rows[0],
+            station_settlements: stationSettlements.rows,
+            expenses: expenses.rows,
+            summaries: summaries.rows
+          }
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Get or create Station Summary error:', { error: error.message, stack: error.stack });
+    console.error('FULL ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get or create station summary'
+    });
   }
 };
 
@@ -1151,14 +971,11 @@ module.exports = {
   getHQSettlements,
   getHQSettlementById,
   createHQSettlement,
-  addStationSettlement,
-  removeStationSettlement,
   addHQExpense,
   removeHQExpense,
-  getAvailableStationSettlements,
-  submitHQSettlement,
-  approveHQSettlement,
-  rejectHQSettlement,
   closeHQSettlement,
-  deleteHQSettlement
+  deleteHQSettlement,
+  recalculateSummary,
+  getExpenseCodes,
+  getOrCreateByDate
 };

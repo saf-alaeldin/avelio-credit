@@ -109,9 +109,13 @@ async function calculateSettlementSummary(client, settlementId) {
 
   const { station_id, period_from } = settlement.rows[0];
 
-  // Get unique currencies from agent entries
+  // Get unique currencies from agent entries AND expenses
   const currencies = await client.query(
-    `SELECT DISTINCT currency FROM settlement_agent_entries WHERE settlement_id = $1`,
+    `SELECT DISTINCT currency FROM (
+       SELECT currency FROM settlement_agent_entries WHERE settlement_id = $1
+       UNION
+       SELECT currency FROM settlement_expenses WHERE settlement_id = $1
+     ) all_currencies`,
     [settlementId]
   );
 
@@ -174,10 +178,11 @@ async function calculateSettlementSummary(client, settlementId) {
     // Final Variance = Actual Cash Received - Expected Net Cash
     const finalVariance = actualCashReceived - expectedNetCash;
 
-    // Determine variance status
+    // Determine variance status (use tolerance for floating point comparison)
+    const VARIANCE_TOLERANCE = 0.01; // 1 cent tolerance
     let varianceStatus = 'PENDING';
     if (!hasPending) {
-      if (finalVariance === 0) {
+      if (Math.abs(finalVariance) < VARIANCE_TOLERANCE) {
         varianceStatus = 'BALANCED';
       } else if (finalVariance < 0) {
         varianceStatus = 'SHORT';
@@ -286,21 +291,30 @@ const getSettlements = async (req, res) => {
 
     const result = await db.query(query, params);
 
-    // Get summaries for each settlement
-    const settlements = [];
-    for (const row of result.rows) {
-      const summaries = await db.query(
-        `SELECT currency, expected_cash, total_expenses, expected_net_cash,
+    // Get summaries for all settlements in a single batch query (fixes N+1 problem)
+    const settlementIds = result.rows.map(r => r.id);
+    let summariesMap = {};
+
+    if (settlementIds.length > 0) {
+      const summariesResult = await db.query(
+        `SELECT settlement_id, currency, expected_cash, total_expenses, expected_net_cash,
                 actual_cash_received, final_variance, variance_status
-         FROM settlement_summaries WHERE settlement_id = $1`,
-        [row.id]
+         FROM settlement_summaries WHERE settlement_id = ANY($1)`,
+        [settlementIds]
       );
 
-      settlements.push({
-        ...row,
-        summaries: summaries.rows
+      // Group summaries by settlement_id
+      summariesResult.rows.forEach(s => {
+        if (!summariesMap[s.settlement_id]) summariesMap[s.settlement_id] = [];
+        summariesMap[s.settlement_id].push(s);
       });
     }
+
+    // Combine settlements with their summaries
+    const settlements = result.rows.map(row => ({
+      ...row,
+      summaries: summariesMap[row.id] || []
+    }));
 
     res.json({
       success: true,
@@ -554,13 +568,14 @@ const updateAgentDeclaredCash = async (req, res) => {
     const { id, agentEntryId } = req.params;
     const { declared_cash, notes } = req.body;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      // Verify settlement is in DRAFT status
+      // Verify settlement exists
       const settlementCheck = await client.query(
         'SELECT status FROM settlements WHERE id = $1',
         [id]
@@ -574,11 +589,14 @@ const updateAgentDeclaredCash = async (req, res) => {
         });
       }
 
-      if (settlementCheck.rows[0].status !== 'DRAFT') {
+      const status = settlementCheck.rows[0].status;
+
+      // DRAFT can be edited by anyone, SUBMITTED only by admin
+      if (status !== 'DRAFT' && userRole !== 'admin') {
         await client.query('ROLLBACK');
-        return res.status(400).json({
+        return res.status(403).json({
           success: false,
-          message: 'Can only update declared cash for DRAFT settlements'
+          message: 'Only administrators can edit submitted settlements'
         });
       }
 
@@ -659,6 +677,7 @@ const addExpense = async (req, res) => {
     const { id } = req.params;
     const { expense_code_id, currency, amount, description } = req.body;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     if (!expense_code_id || !currency || !amount) {
       return res.status(400).json({
@@ -679,7 +698,7 @@ const addExpense = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Verify settlement is in DRAFT status
+      // Verify settlement exists
       const settlementCheck = await client.query(
         'SELECT status FROM settlements WHERE id = $1',
         [id]
@@ -693,11 +712,14 @@ const addExpense = async (req, res) => {
         });
       }
 
-      if (settlementCheck.rows[0].status !== 'DRAFT') {
+      const status = settlementCheck.rows[0].status;
+
+      // DRAFT can be edited by anyone, SUBMITTED only by admin
+      if (status !== 'DRAFT' && userRole !== 'admin') {
         await client.query('ROLLBACK');
-        return res.status(400).json({
+        return res.status(403).json({
           success: false,
-          message: 'Can only add expenses to DRAFT settlements'
+          message: 'Only administrators can edit submitted settlements'
         });
       }
 
@@ -784,13 +806,14 @@ const removeExpense = async (req, res) => {
   try {
     const { id, expenseId } = req.params;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      // Verify settlement is in DRAFT status
+      // Verify settlement exists
       const settlementCheck = await client.query(
         'SELECT status FROM settlements WHERE id = $1',
         [id]
@@ -804,11 +827,14 @@ const removeExpense = async (req, res) => {
         });
       }
 
-      if (settlementCheck.rows[0].status !== 'DRAFT') {
+      const status = settlementCheck.rows[0].status;
+
+      // DRAFT can be edited by anyone, SUBMITTED only by admin
+      if (status !== 'DRAFT' && userRole !== 'admin') {
         await client.query('ROLLBACK');
-        return res.status(400).json({
+        return res.status(403).json({
           success: false,
-          message: 'Can only remove expenses from DRAFT settlements'
+          message: 'Only administrators can edit submitted settlements'
         });
       }
 
@@ -869,7 +895,178 @@ const removeExpense = async (req, res) => {
   }
 };
 
-// SUBMIT settlement for review (DRAFT -> REVIEW)
+// UPDATE expense (admin only for submitted settlements)
+const updateExpense = async (req, res) => {
+  try {
+    const { id, expenseId } = req.params;
+    const { expense_code_id, amount, description } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Admin only
+    if (userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can edit expenses'
+      });
+    }
+
+    if (!expense_code_id && !amount && description === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one field to update is required'
+      });
+    }
+
+    if (amount !== undefined && parseFloat(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount must be greater than zero'
+      });
+    }
+
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Verify settlement exists
+      const settlementCheck = await client.query(
+        'SELECT status FROM settlements WHERE id = $1',
+        [id]
+      );
+
+      if (settlementCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Settlement not found'
+        });
+      }
+
+      // Get existing expense
+      const existingExpense = await client.query(
+        `SELECT se.*, ec.code as expense_code
+         FROM settlement_expenses se
+         JOIN expense_codes ec ON se.expense_code_id = ec.id
+         WHERE se.id = $1 AND se.settlement_id = $2`,
+        [expenseId, id]
+      );
+
+      if (existingExpense.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Expense not found'
+        });
+      }
+
+      const oldExpense = existingExpense.rows[0];
+
+      // If changing expense code, verify it exists and allows the currency
+      let newExpenseCode = null;
+      if (expense_code_id && expense_code_id !== oldExpense.expense_code_id) {
+        const codeCheck = await client.query(
+          'SELECT * FROM expense_codes WHERE id = $1 AND is_active = true',
+          [expense_code_id]
+        );
+
+        if (codeCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: 'Expense code not found or inactive'
+          });
+        }
+
+        if (!codeCheck.rows[0].currencies_allowed.includes(oldExpense.currency)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: `Currency ${oldExpense.currency} not allowed for this expense code`
+          });
+        }
+
+        newExpenseCode = codeCheck.rows[0];
+      }
+
+      // Build update query
+      const updates = [];
+      const params = [];
+      let paramIndex = 1;
+
+      if (expense_code_id) {
+        updates.push(`expense_code_id = $${paramIndex++}`);
+        params.push(expense_code_id);
+      }
+
+      if (amount !== undefined) {
+        updates.push(`amount = $${paramIndex++}`);
+        params.push(parseFloat(amount));
+      }
+
+      if (description !== undefined) {
+        updates.push(`description = $${paramIndex++}`);
+        params.push(description || null);
+      }
+
+      updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
+      params.push(expenseId);
+
+      await client.query(
+        `UPDATE settlement_expenses SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+        params
+      );
+
+      // Recalculate summary
+      await calculateSettlementSummary(client, id);
+
+      // Log action
+      await logSettlementAction(
+        client,
+        id,
+        userId,
+        'UPDATE_EXPENSE',
+        null,
+        { expense_code: oldExpense.expense_code, amount: oldExpense.amount },
+        { expense_code: newExpenseCode?.code || oldExpense.expense_code, amount: amount || oldExpense.amount },
+        null,
+        req.ip
+      );
+
+      await client.query('COMMIT');
+
+      // Get updated expense details
+      const updatedExpense = await db.query(
+        `SELECT se.*, ec.code as expense_code, ec.name as expense_name, ec.category
+         FROM settlement_expenses se
+         JOIN expense_codes ec ON se.expense_code_id = ec.id
+         WHERE se.id = $1`,
+        [expenseId]
+      );
+
+      res.json({
+        success: true,
+        message: 'Expense updated successfully',
+        data: { expense: updatedExpense.rows[0] }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Update expense error:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update expense'
+    });
+  }
+};
+
+// SUBMIT settlement (DRAFT -> SUBMITTED) - Final submission, only admin can modify after this
 const submitSettlement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -902,14 +1099,10 @@ const submitSettlement = async (req, res) => {
         });
       }
 
-      // Note: Agent declared cash verification has been removed
-      // Settlements can be submitted without all agent entries having declared cash
-      // The variance will be calculated based on whatever values are provided
-
       // Recalculate summary before submission
       await calculateSettlementSummary(client, id);
 
-      // Update status
+      // Update status to REVIEW (for approval workflow)
       await client.query(
         `UPDATE settlements
          SET status = 'REVIEW', submitted_by = $1, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -934,7 +1127,7 @@ const submitSettlement = async (req, res) => {
 
       res.json({
         success: true,
-        message: 'Settlement submitted for review'
+        message: 'Settlement submitted successfully'
       });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1242,11 +1435,12 @@ const closeSettlement = async (req, res) => {
   }
 };
 
-// DELETE settlement (only DRAFT settlements can be deleted)
+// DELETE settlement (DRAFT by anyone, SUBMITTED only by admin)
 const deleteSettlement = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     const client = await db.pool.connect();
 
@@ -1268,6 +1462,15 @@ const deleteSettlement = async (req, res) => {
       }
 
       const settlementData = settlement.rows[0];
+
+      // Only admin can delete submitted settlements
+      if (settlementData.status !== 'DRAFT' && userRole !== 'admin') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          success: false,
+          message: 'Only administrators can delete submitted settlements'
+        });
+      }
 
       // Delete related records first (in case cascade doesn't work)
       await client.query('DELETE FROM settlement_audit_logs WHERE settlement_id = $1', [id]);
@@ -1494,6 +1697,7 @@ const updateStationDeclaredCash = async (req, res) => {
     const { id } = req.params;
     const { currency, station_declared_cash } = req.body;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     if (!currency) {
       return res.status(400).json({
@@ -1514,7 +1718,7 @@ const updateStationDeclaredCash = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Verify settlement exists and is in DRAFT status
+      // Verify settlement exists
       const settlement = await client.query(
         'SELECT status FROM settlements WHERE id = $1',
         [id]
@@ -1528,11 +1732,14 @@ const updateStationDeclaredCash = async (req, res) => {
         });
       }
 
-      if (settlement.rows[0].status !== 'DRAFT') {
+      const status = settlement.rows[0].status;
+
+      // DRAFT can be edited by anyone, SUBMITTED only by admin
+      if (status !== 'DRAFT' && userRole !== 'admin') {
         await client.query('ROLLBACK');
-        return res.status(400).json({
+        return res.status(403).json({
           success: false,
-          message: 'Can only update station declared cash on DRAFT settlements'
+          message: 'Only administrators can edit submitted settlements'
         });
       }
 
@@ -1543,15 +1750,25 @@ const updateStationDeclaredCash = async (req, res) => {
         [id, currency]
       );
 
-      if (currentSummary.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({
-          success: false,
-          message: 'Settlement summary not found for this currency'
-        });
-      }
+      let oldValue = null;
 
-      const oldValue = currentSummary.rows[0].station_declared_cash;
+      // If no summary exists for this currency, create one
+      if (currentSummary.rows.length === 0) {
+        // Create a new summary record for this currency
+        // For non-Juba stations with no sales in this currency, we still need to track cash sent
+        // Set actual_cash_received = station_declared_cash since there are no agent entries
+        const cashAmount = parseFloat(station_declared_cash);
+        await client.query(
+          `INSERT INTO settlement_summaries
+           (settlement_id, currency, opening_balance, expected_cash, total_expenses,
+            expected_net_cash, actual_cash_received, final_variance, variance_status,
+            agent_cash_total, station_declared_cash)
+           VALUES ($1, $2, 0, 0, 0, 0, $3, $3, 'EXTRA', $3, $3)`,
+          [id, currency, cashAmount]
+        );
+      } else {
+        oldValue = currentSummary.rows[0].station_declared_cash;
+      }
 
       // Update station_declared_cash (the trigger will calculate cash_match_status)
       await client.query(
@@ -1560,6 +1777,21 @@ const updateStationDeclaredCash = async (req, res) => {
          WHERE settlement_id = $2 AND currency = $3`,
         [parseFloat(station_declared_cash), id, currency]
       );
+
+      // For non-Juba stations (single agent entry with agent_id = NULL),
+      // also update the agent entry's declared_cash so actual_cash_received gets calculated
+      const agentEntryUpdate = await client.query(
+        `UPDATE settlement_agent_entries
+         SET declared_cash = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE settlement_id = $2 AND currency = $3 AND agent_id IS NULL
+         RETURNING id`,
+        [parseFloat(station_declared_cash), id, currency]
+      );
+
+      // If we updated an agent entry, recalculate the summary to update actual_cash_received
+      if (agentEntryUpdate.rows.length > 0) {
+        await calculateSettlementSummary(client, id);
+      }
 
       // Log action
       await logSettlementAction(
@@ -1609,6 +1841,7 @@ module.exports = {
   updateAgentDeclaredCash,
   updateStationDeclaredCash,
   addExpense,
+  updateExpense,
   removeExpense,
   submitSettlement,
   approveSettlement,

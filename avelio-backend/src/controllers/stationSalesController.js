@@ -23,6 +23,7 @@ const getStationSales = async (req, res) => {
       date_to,
       settled,
       settlement_id,
+      unsettled_only,
       page = 1,
       pageSize = 50
     } = req.query;
@@ -68,7 +69,7 @@ const getStationSales = async (req, res) => {
 
     if (settled === 'true') {
       query += ' AND ss.settlement_id IS NOT NULL';
-    } else if (settled === 'false') {
+    } else if (settled === 'false' || unsettled_only === 'true') {
       query += ' AND ss.settlement_id IS NULL';
     }
 
@@ -262,7 +263,8 @@ const createSale = async (req, res) => {
       payment_method,
       customer_name,
       description,
-      sale_reference
+      sale_reference,
+      settlement_id // Link sale to settlement when adding to existing settlement
     } = req.body;
     const userId = req.user.id;
 
@@ -353,8 +355,8 @@ const createSale = async (req, res) => {
     const result = await db.query(
       `INSERT INTO station_sales
        (sale_reference, station_id, agent_id, point_of_sale, transaction_date, transaction_time,
-        flight_reference, sales_amount, cashout_amount, currency, payment_method, customer_name, description, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        flight_reference, sales_amount, cashout_amount, currency, payment_method, customer_name, description, created_by, settlement_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
         finalReference,
@@ -370,7 +372,8 @@ const createSale = async (req, res) => {
         payment_method || 'CASH',
         customer_name || null,
         description || null,
-        userId
+        userId,
+        settlement_id || null
       ]
     );
 
