@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ModernDatePicker from '../components/ModernDatePicker';
+import FormattedCurrencyInput from '../components/FormattedCurrencyInput';
 import './StationSettlementSimple.css'; // Reuse the same elderly-friendly styles
 
 // API URL helper
@@ -279,12 +280,21 @@ export default function StationSummarySimple() {
     );
   }
 
+  // Format current date for print footer
+  const printDate = new Date().toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
   return (
-    <div className="settlement-simple">
+    <div className="settlement-simple" data-print-date={printDate}>
       {/* Header */}
       <header className="simple-header">
         <h1>Station Summary</h1>
-        <p>Daily cash from all stations</p>
+        <p>Daily cash from all stations - {formatDate(selectedDate)}</p>
       </header>
 
       {/* Messages */}
@@ -453,14 +463,13 @@ export default function StationSummarySimple() {
             </div>
             <div className="form-field small">
               <label>Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <FormattedCurrencyInput
                 className="simple-input"
                 placeholder="0.00"
                 value={newExpense.amount}
-                onChange={(e) => setNewExpense(prev => ({ ...prev, amount: e.target.value }))}
+                onChange={(val) => setNewExpense(prev => ({ ...prev, amount: val }))}
+                currency={activeCurrency}
+                showWords={true}
               />
             </div>
             <div className="form-field">
@@ -511,6 +520,52 @@ export default function StationSummarySimple() {
             ))}
           </ul>
         )}
+      </section>
+
+      {/* Print-only: Complete Summary for Both Currencies */}
+      <section className="print-summary-section">
+        <h2 className="simple-section-header">Complete Summary - All Currencies</h2>
+        <table className="simple-table print-summary-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th className="text-right">USD</th>
+              <th className="text-right">SSP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Opening Balance</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'USD')?.opening_balance || 0)}</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'SSP')?.opening_balance || 0)}</td>
+            </tr>
+            <tr>
+              <td>+ Cash from Stations</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'USD')?.cash_from_stations || 0)}</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'SSP')?.cash_from_stations || 0)}</td>
+            </tr>
+            <tr>
+              <td>= Total Available</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'USD')?.total_available || 0)}</td>
+              <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'SSP')?.total_available || 0)}</td>
+            </tr>
+            <tr>
+              <td>- HQ Expenses</td>
+              <td className="amount" style={{color: '#dc2626'}}>-{formatCurrency(summaries.find(s => s.currency === 'USD')?.total_hq_expenses || 0)}</td>
+              <td className="amount" style={{color: '#dc2626'}}>-{formatCurrency(summaries.find(s => s.currency === 'SSP')?.total_hq_expenses || 0)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style={{background: '#0ea5e9', color: 'white'}}>
+              <td style={{fontWeight: 700, color: 'white'}}>= TO SAFE</td>
+              <td className="amount" style={{fontWeight: 700, color: 'white', fontSize: '14px'}}>USD {formatCurrency(summaries.find(s => s.currency === 'USD')?.safe_amount || 0)}</td>
+              <td className="amount" style={{fontWeight: 700, color: 'white', fontSize: '14px'}}>SSP {formatCurrency(summaries.find(s => s.currency === 'SSP')?.safe_amount || 0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div className="print-status">
+          <strong>Status:</strong> {summary?.status || 'DRAFT'}
+        </div>
       </section>
 
       {/* Sticky Summary Footer */}

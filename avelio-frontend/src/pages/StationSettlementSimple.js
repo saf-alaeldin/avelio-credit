@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ModernDatePicker from '../components/ModernDatePicker';
+import FormattedCurrencyInput from '../components/FormattedCurrencyInput';
 import './StationSettlementSimple.css';
 
 // API URL helper
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  // If accessed via HTTPS (through Caddy proxy), use relative path
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -38,6 +43,8 @@ export default function StationSettlementSimple() {
   };
   const userRole = getUserRole();
   const isAdmin = userRole === 'admin';
+  const isManager = userRole === 'manager';
+  const isAdminOrManager = isAdmin || isManager;
 
   // Loading and messages
   const [loading, setLoading] = useState(true);
@@ -54,6 +61,8 @@ export default function StationSettlementSimple() {
 
   // Master data
   const [stations, setStations] = useState([]);
+  const [pointOfSales, setPointOfSales] = useState([]);
+  const [selectedPOS, setSelectedPOS] = useState('');
   const [agents, setAgents] = useState([]);
   const [expenseCodes, setExpenseCodes] = useState([]);
 
@@ -76,6 +85,10 @@ export default function StationSettlementSimple() {
   // Cash sent state - separated by currency
   const [cashSentByAgent, setCashSentByAgent] = useState({ USD: {}, SSP: {} });
   const [totalCashSent, setTotalCashSent] = useState({ USD: '', SSP: '' });
+  const [newCashSent, setNewCashSent] = useState({
+    agent_id: '',
+    amount: ''
+  });
 
   // Settlement state
   const [settlementId, setSettlementId] = useState(id || null);
@@ -87,23 +100,56 @@ export default function StationSettlementSimple() {
     stations.find(s => s.id === stationId),
     [stations, stationId]
   );
-  const isJubaStation = selectedStation?.station_code === 'JUB';
+  // Check both selectedStation and settlement for Juba (in case stations haven't loaded yet)
+  const isJubaStation = selectedStation?.station_code === 'JUB' || settlement?.station_code === 'JUB';
 
   // Filter by currency
   const filteredSales = useMemo(() =>
-    sales.filter(s => s.currency === activeCurrency),
-    [sales, activeCurrency]
+    sales.filter(s => {
+      // Filter by currency
+      if (s.currency !== activeCurrency) return false;
+      // For Juba station with POS selected, filter by POS
+      if (isJubaStation && selectedPOS && s.point_of_sale !== selectedPOS) return false;
+      return true;
+    }),
+    [sales, activeCurrency, isJubaStation, selectedPOS]
   );
 
   const filteredExpenses = useMemo(() =>
-    expenses.filter(e => e.currency === activeCurrency),
-    [expenses, activeCurrency]
+    expenses.filter(e => {
+      // Filter by currency
+      if (e.currency !== activeCurrency) return false;
+      // For Juba station with POS selected, filter by POS
+      if (isJubaStation && selectedPOS && e.point_of_sale && e.point_of_sale !== selectedPOS) return false;
+      return true;
+    }),
+    [expenses, activeCurrency, isJubaStation, selectedPOS]
   );
 
-  const filteredAgentEntries = useMemo(() =>
-    agentEntries.filter(e => e.currency === activeCurrency),
-    [agentEntries, activeCurrency]
-  );
+  // Get unique agents from sales (for showing cash inputs)
+  // This shows ALL agents that have sales in the current currency
+  const agentsFromSales = useMemo(() => {
+    const agentMap = {};
+
+    // Build agent list from sales and calculate expected cash
+    filteredSales.forEach(sale => {
+      if (sale.agent_id) {
+        if (!agentMap[sale.agent_id]) {
+          agentMap[sale.agent_id] = {
+            agent_id: sale.agent_id,
+            agent_name: sale.agent_name || agents.find(a => a.id === sale.agent_id)?.agent_name || 'Unknown',
+            expected_cash: 0
+          };
+        }
+        // Calculate expected cash from sales (sales - refunds)
+        const saleAmount = parseFloat(sale.sales_amount || sale.amount || 0);
+        const cashoutAmount = parseFloat(sale.cashout_amount || 0);
+        agentMap[sale.agent_id].expected_cash += saleAmount - cashoutAmount;
+      }
+    });
+
+    return Object.values(agentMap);
+  }, [filteredSales, agents]);
 
   // Calculate totals - per active currency
   const totals = useMemo(() => {
@@ -116,9 +162,18 @@ export default function StationSettlementSimple() {
 
     let cashSent = 0;
     if (isJubaStation) {
-      // Sum cash sent by each agent for the active currency
+      // For Juba: Sum cash sent only for agents in the currently selected POS
       const currencyCash = cashSentByAgent[activeCurrency] || {};
-      cashSent = Object.values(currencyCash).reduce((sum, v) => sum + parseFloat(v || 0), 0);
+      if (selectedPOS) {
+        // Only sum cash for agents that belong to the selected POS
+        const posAgentIds = agents.map(a => a.id);
+        cashSent = Object.entries(currencyCash)
+          .filter(([agentId]) => posAgentIds.includes(agentId))
+          .reduce((sum, [, v]) => sum + parseFloat(v || 0), 0);
+      } else {
+        // No POS selected - sum all agents (overview mode)
+        cashSent = Object.values(currencyCash).reduce((sum, v) => sum + parseFloat(v || 0), 0);
+      }
     } else {
       cashSent = parseFloat(totalCashSent[activeCurrency] || 0);
     }
@@ -134,7 +189,7 @@ export default function StationSettlementSimple() {
       cashSent,
       difference
     };
-  }, [filteredSales, filteredExpenses, cashSentByAgent, totalCashSent, isJubaStation, activeCurrency]);
+  }, [filteredSales, filteredExpenses, cashSentByAgent, totalCashSent, isJubaStation, activeCurrency, selectedPOS, agents]);
 
   // Status helper
   const getStatus = useCallback((diff) => {
@@ -156,15 +211,6 @@ export default function StationSettlementSimple() {
     });
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    return new Date(dateStr).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
   // Fetch stations
   const fetchStations = useCallback(async () => {
     try {
@@ -180,14 +226,43 @@ export default function StationSettlementSimple() {
     }
   }, [token]);
 
-  // Fetch agents for station
+  // Fetch POS values for station
+  const fetchPointOfSales = useCallback(async () => {
+    if (!stationId || !isJubaStation) {
+      setPointOfSales([]);
+      setSelectedPOS('');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/sales-agents/point-of-sales?station_id=${stationId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPointOfSales(data.data?.point_of_sales || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch POS:', err);
+    }
+  }, [stationId, isJubaStation, token]);
+
+  // Fetch agents for station (filtered by POS for Juba)
   const fetchAgents = useCallback(async () => {
     if (!stationId) {
       setAgents([]);
       return;
     }
+    // For Juba station, require POS selection first
+    if (isJubaStation && !selectedPOS) {
+      setAgents([]);
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}/sales-agents?station_id=${stationId}&active_only=true`, {
+      let url = `${API_BASE}/sales-agents?station_id=${stationId}&active_only=true`;
+      if (isJubaStation && selectedPOS) {
+        url += `&point_of_sale=${encodeURIComponent(selectedPOS)}`;
+      }
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -197,7 +272,7 @@ export default function StationSettlementSimple() {
     } catch (err) {
       console.error('Failed to fetch agents:', err);
     }
-  }, [stationId, token]);
+  }, [stationId, selectedPOS, isJubaStation, token]);
 
   // Fetch expense codes
   const fetchExpenseCodes = useCallback(async () => {
@@ -283,6 +358,53 @@ export default function StationSettlementSimple() {
     }
   }, [settlementId, token]);
 
+  // Refresh all data from server
+  const handleRefresh = async () => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      // Refresh all data in parallel
+      await Promise.all([
+        fetchStations(),
+        fetchExpenseCodes(),
+        fetchAgents(),
+        fetchSales(),
+        settlementId ? fetchSettlement() : Promise.resolve()
+      ]);
+      setSuccess('Data refreshed');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to refresh data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset state when navigating to new settlement (id becomes undefined)
+  useEffect(() => {
+    if (!id) {
+      // Reset all state for new settlement
+      setStationId('');
+      setActiveCurrency('USD');
+      setPeriodFrom('');
+      setPeriodTo('');
+      setSelectedPOS('');
+      setSales([]);
+      setExpenses([]);
+      setCashSentByAgent({ USD: {}, SSP: {} });
+      setTotalCashSent({ USD: '', SSP: '' });
+      setNewSale({ agent_id: '', amount: '', cashout: '' });
+      setNewExpense({ expense_code_id: '', amount: '', description: '' });
+      setNewCashSent({ agent_id: '', amount: '' });
+      setSettlementId(null);
+      setSettlement(null);
+      setAgentEntries([]);
+      setError('');
+      setSuccess('');
+    }
+  }, [id]);
+
   // Initial load
   useEffect(() => {
     const loadData = async () => {
@@ -296,7 +418,13 @@ export default function StationSettlementSimple() {
     loadData();
   }, [fetchStations, fetchExpenseCodes, fetchSettlement, isEditMode]);
 
-  // Fetch agents when station changes
+  // Fetch POS when station changes (for Juba)
+  useEffect(() => {
+    fetchPointOfSales();
+    setSelectedPOS(''); // Reset POS selection when station changes
+  }, [fetchPointOfSales, stationId]);
+
+  // Fetch agents when station or POS changes
   useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
@@ -358,6 +486,10 @@ export default function StationSettlementSimple() {
       setError('Please enter a valid sales amount');
       return;
     }
+    if (isJubaStation && !selectedPOS) {
+      setError('Please select a Point of Sale (POS) first');
+      return;
+    }
     if (isJubaStation && !newSale.agent_id) {
       setError('Please select an agent');
       return;
@@ -367,6 +499,7 @@ export default function StationSettlementSimple() {
       const saleData = {
         station_id: stationId,
         agent_id: isJubaStation ? newSale.agent_id : null,
+        point_of_sale: isJubaStation ? selectedPOS : null,
         transaction_date: periodTo, // Use period end date for all sales
         sales_amount: parseFloat(newSale.amount),
         cashout_amount: parseFloat(newSale.cashout || 0),
@@ -388,13 +521,38 @@ export default function StationSettlementSimple() {
         throw new Error(data.message || 'Failed to add sale');
       }
 
-      // Add to local list with agent name and ensure currency is set
+      // Add to local list with agent name, POS, and ensure currency is set
       const newSaleWithAgent = {
         ...data.data?.sale || data.data,
         agent_name: agents.find(a => a.id === newSale.agent_id)?.agent_name || '',
+        point_of_sale: selectedPOS,
         currency: activeCurrency  // Ensure currency is set for filtering
       };
       setSales(prev => [...prev, newSaleWithAgent]);
+
+      // If we have a settlement, recalculate to update agent entries
+      if (settlementId) {
+        try {
+          const recalcRes = await fetch(`${API_BASE}/settlements/${settlementId}/recalculate`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (recalcRes.ok) {
+            // Refresh agent entries from backend
+            const entriesRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (entriesRes.ok) {
+              const entriesData = await entriesRes.json();
+              setAgentEntries(entriesData.data?.agent_entries || []);
+            }
+            // Also refresh sales to ensure UI matches server
+            await fetchSales();
+          }
+        } catch (recalcErr) {
+          console.error('Failed to recalculate settlement:', recalcErr);
+        }
+      }
 
       // Reset form
       setNewSale({
@@ -423,6 +581,31 @@ export default function StationSettlementSimple() {
       }
 
       setSales(prev => prev.filter(s => s.id !== saleId));
+
+      // If we have a settlement, recalculate to update agent entries and summaries
+      if (settlementId) {
+        try {
+          const recalcRes = await fetch(`${API_BASE}/settlements/${settlementId}/recalculate`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (recalcRes.ok) {
+            // Refresh agent entries from backend
+            const entriesRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (entriesRes.ok) {
+              const entriesData = await entriesRes.json();
+              setAgentEntries(entriesData.data?.agent_entries || []);
+            }
+            // Also refresh sales to ensure UI matches server
+            await fetchSales();
+          }
+        } catch (recalcErr) {
+          console.error('Failed to recalculate settlement:', recalcErr);
+        }
+      }
+
       setSuccess('Sale deleted');
       setTimeout(() => setSuccess(''), 2000);
     } catch (err) {
@@ -451,18 +634,24 @@ export default function StationSettlementSimple() {
     }
 
     try {
+      const expenseData = {
+        expense_code_id: newExpense.expense_code_id,
+        currency: activeCurrency,
+        amount: parseFloat(newExpense.amount),
+        description: newExpense.description
+      };
+      // Include POS for Juba station
+      if (isJubaStation && selectedPOS) {
+        expenseData.point_of_sale = selectedPOS;
+      }
+
       const res = await fetch(`${API_BASE}/settlements/${currentSettlementId}/expenses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          expense_code_id: newExpense.expense_code_id,
-          currency: activeCurrency,
-          amount: parseFloat(newExpense.amount),
-          description: newExpense.description
-        })
+        body: JSON.stringify(expenseData)
       });
 
       const data = await res.json();
@@ -470,12 +659,13 @@ export default function StationSettlementSimple() {
         throw new Error(data.message || 'Failed to add expense');
       }
 
-      // Add to local list with expense name and ensure currency is set
+      // Add to local list with expense name and ensure currency/POS is set for filtering
       const expenseCode = expenseCodes.find(ec => ec.id === newExpense.expense_code_id);
       const newExpenseWithName = {
         ...data.data?.expense || data.data,
         expense_name: expenseCode?.name || '',
-        currency: activeCurrency  // Ensure currency is set for filtering
+        currency: activeCurrency,
+        point_of_sale: isJubaStation && selectedPOS ? selectedPOS : null
       };
       setExpenses(prev => [...prev, newExpenseWithName]);
 
@@ -524,15 +714,90 @@ export default function StationSettlementSimple() {
       }
     }));
 
-    // Find the agent entry to update
-    const entry = agentEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
-    if (!entry || !settlementId) return;
+    // If no settlement yet, just keep in state (will be saved when settlement is created)
+    if (!settlementId) {
+      showAutoSave();
+      return;
+    }
 
     // Debounce API call
     clearTimeout(window.cashUpdateTimer);
     window.cashUpdateTimer = setTimeout(async () => {
       try {
-        await fetch(`${API_BASE}/settlements/${settlementId}/agents/${entry.id}`, {
+        // Find the agent entry to update
+        let entry = agentEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
+
+        // If no entry found, try to refresh or create the agent entry
+        if (!entry) {
+          console.log('No agent entry found, attempting to refresh/create...');
+
+          // Only recalculate if settlement is in DRAFT status
+          const isDraftSettlement = !settlement || settlement.status === 'DRAFT';
+          if (isDraftSettlement) {
+            try {
+              await fetch(`${API_BASE}/settlements/${settlementId}/recalculate`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+              });
+            } catch (recalcErr) {
+              console.warn('Recalculate failed:', recalcErr);
+            }
+          }
+
+          // Fetch fresh agent entries
+          const entriesRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (entriesRes.ok) {
+            const entriesData = await entriesRes.json();
+            const freshEntries = entriesData.data?.agent_entries || [];
+            setAgentEntries(freshEntries);
+
+            // Try to find the entry again
+            entry = freshEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
+          }
+
+          // If still no entry, try to create it
+          if (!entry) {
+            console.log('Entry still not found, creating new agent entry...');
+            try {
+              const createRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  agent_id: agentId,
+                  currency: activeCurrency,
+                  declared_cash: parseFloat(value) || 0
+                })
+              });
+
+              if (createRes.ok) {
+                const createData = await createRes.json();
+                entry = createData.data?.entry;
+                if (entry) {
+                  // Add to local state
+                  setAgentEntries(prev => [...prev, entry]);
+                  showAutoSave();
+                  return; // Entry created with declared_cash, no need to update
+                }
+              } else {
+                const errorData = await createRes.json();
+                throw new Error(errorData.message || 'Failed to create entry');
+              }
+            } catch (createErr) {
+              console.error('Failed to create agent entry:', createErr);
+              setError('Failed to create agent entry: ' + createErr.message);
+              setTimeout(() => setError(''), 3000);
+              return;
+            }
+          }
+        }
+
+        const res = await fetch(`${API_BASE}/settlements/${settlementId}/agents/${entry.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -540,11 +805,200 @@ export default function StationSettlementSimple() {
           },
           body: JSON.stringify({ declared_cash: parseFloat(value) || 0 })
         });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'Failed to save');
+        }
         showAutoSave();
       } catch (err) {
         console.error('Failed to update agent cash:', err);
+        setError('Failed to save cash amount: ' + err.message);
+        setTimeout(() => setError(''), 3000);
       }
     }, 500);
+  };
+
+  // Add cash sent entry
+  const handleAddCashSent = async () => {
+    setError('');
+
+    if (isJubaStation && !newCashSent.agent_id) {
+      setError('Please select an agent');
+      return;
+    }
+    if (!newCashSent.amount || parseFloat(newCashSent.amount) <= 0) {
+      setError('Please enter a valid cash amount');
+      return;
+    }
+
+    const amount = parseFloat(newCashSent.amount);
+
+    if (isJubaStation) {
+      // For Juba: Update cash sent for specific agent
+      const agentId = newCashSent.agent_id;
+
+      // Use the entered amount directly (SET, not ADD)
+      const newTotal = amount;
+
+      // If we have a settlement, update the agent entry FIRST
+      if (settlementId) {
+        let entry = agentEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
+
+        // If no entry found, try to refresh or create the agent entry
+        if (!entry) {
+          console.log('No agent entry found, attempting to refresh/create...');
+
+          // Only recalculate if settlement is in DRAFT status
+          const isDraftSettlement = !settlement || settlement.status === 'DRAFT';
+          if (isDraftSettlement) {
+            try {
+              await fetch(`${API_BASE}/settlements/${settlementId}/recalculate`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+              });
+            } catch (recalcErr) {
+              console.warn('Recalculate failed:', recalcErr);
+            }
+          }
+
+          // Fetch fresh agent entries
+          try {
+            const entriesRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (entriesRes.ok) {
+              const entriesData = await entriesRes.json();
+              const freshEntries = entriesData.data?.agent_entries || [];
+              setAgentEntries(freshEntries);
+
+              // Try to find the entry again
+              entry = freshEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
+            }
+          } catch (fetchErr) {
+            console.error('Failed to fetch agent entries:', fetchErr);
+          }
+
+          // If still no entry, try to create it
+          if (!entry) {
+            console.log('Entry still not found, creating new agent entry...');
+            try {
+              const createRes = await fetch(`${API_BASE}/settlements/${settlementId}/agents`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  agent_id: agentId,
+                  currency: activeCurrency,
+                  declared_cash: newTotal
+                })
+              });
+
+              if (createRes.ok) {
+                const createData = await createRes.json();
+                entry = createData.data?.entry;
+                if (entry) {
+                  // Add to local state and update cash sent
+                  setAgentEntries(prev => [...prev, entry]);
+                  setCashSentByAgent(prev => ({
+                    ...prev,
+                    [activeCurrency]: {
+                      ...(prev[activeCurrency] || {}),
+                      [agentId]: newTotal.toString()
+                    }
+                  }));
+                  setNewCashSent({ agent_id: '', amount: '' });
+                  setSuccess('Cash sent added');
+                  setTimeout(() => setSuccess(''), 2000);
+                  return; // Entry created with declared_cash, done
+                }
+              } else {
+                const errorData = await createRes.json();
+                throw new Error(errorData.message || 'Failed to create entry');
+              }
+            } catch (createErr) {
+              console.error('Failed to create agent entry:', createErr);
+              setError('Failed to create agent entry: ' + createErr.message);
+              return;
+            }
+          }
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/settlements/${settlementId}/agents/${entry.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ declared_cash: newTotal })
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.message || 'Failed to save');
+          }
+        } catch (err) {
+          console.error('Failed to update agent cash:', err);
+          setError('Failed to save: ' + err.message);
+          return;
+        }
+      }
+
+      // Update state only after successful save
+      setCashSentByAgent(prev => ({
+        ...prev,
+        [activeCurrency]: {
+          ...(prev[activeCurrency] || {}),
+          [agentId]: newTotal.toString()
+        }
+      }));
+    } else {
+      // For other stations: Update total cash sent (SET, not ADD)
+      const newTotal = amount;
+
+      // If we have a settlement, update the station cash FIRST
+      if (settlementId) {
+        try {
+          const res = await fetch(`${API_BASE}/settlements/${settlementId}/station-cash`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              currency: activeCurrency,
+              station_declared_cash: newTotal
+            })
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.message || 'Failed to save');
+          }
+        } catch (err) {
+          console.error('Failed to update station cash:', err);
+          setError('Failed to save: ' + err.message);
+          return;
+        }
+      }
+
+      // Update state only after successful save
+      setTotalCashSent(prev => ({
+        ...prev,
+        [activeCurrency]: newTotal.toString()
+      }));
+    }
+
+    // Reset form
+    setNewCashSent({
+      agent_id: '',
+      amount: ''
+    });
+
+    setSuccess('Cash sent updated');
+    setTimeout(() => setSuccess(''), 2000);
+    showAutoSave();
   };
 
   // Update station total cash sent
@@ -603,7 +1057,7 @@ export default function StationSettlementSimple() {
       return null;
     }
     if (new Date(periodFrom) > new Date(periodTo)) {
-      setError('From date must be before To date');
+      setError('From date cannot be after To date');
       return null;
     }
 
@@ -628,11 +1082,40 @@ export default function StationSettlementSimple() {
       }
 
       const newId = data.data?.settlement?.id || data.data?.id;
-      setSettlementId(newId);
-      setSettlement(data.data?.settlement || data.data);
+      const newSettlement = data.data?.settlement || data.data;
 
-      // Fetch the created settlement to get agent entries
-      await fetchSettlement();
+      setSettlementId(newId);
+      setSettlement(newSettlement);
+
+      // Set agent entries directly from the response (don't rely on fetchSettlement)
+      if (newSettlement.agent_entries) {
+        setAgentEntries(newSettlement.agent_entries);
+
+        // Save cash values that were entered before saving
+        // Update each agent entry with the declared_cash from cashSentByAgent
+        for (const entry of newSettlement.agent_entries) {
+          const cashValue = cashSentByAgent[entry.currency]?.[entry.agent_id];
+          if (cashValue && parseFloat(cashValue) > 0) {
+            try {
+              await fetch(`${API_BASE}/settlements/${newId}/agents/${entry.id}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ declared_cash: parseFloat(cashValue) })
+              });
+            } catch (err) {
+              console.error('Failed to save agent cash:', err);
+            }
+          }
+        }
+      }
+
+      // Set expenses if any
+      if (newSettlement.expenses) {
+        setExpenses(newSettlement.expenses);
+      }
 
       setSuccess('Settlement created');
       setTimeout(() => setSuccess(''), 2000);
@@ -661,14 +1144,46 @@ export default function StationSettlementSimple() {
 
   // Submit for review
   const handleSubmit = async () => {
-    if (!settlementId) {
-      setError('Please save the draft first');
-      return;
+    let currentSettlementId = settlementId;
+
+    // Create settlement first if it doesn't exist
+    if (!currentSettlementId) {
+      currentSettlementId = await handleCreateSettlement();
+      if (!currentSettlementId) {
+        return; // Creation failed, error already set
+      }
     }
 
     try {
       setSaving(true);
-      const res = await fetch(`${API_BASE}/settlements/${settlementId}/submit`, {
+
+      // IMPORTANT: Clear any pending debounce timers and save cash values immediately
+      // This prevents data loss when user types cash and clicks Submit before debounce completes
+      clearTimeout(window.totalCashTimer);
+
+      // Save total cash sent for each currency that has a value
+      for (const currency of ['USD', 'SSP']) {
+        const cashValue = totalCashSent[currency];
+        if (cashValue && parseFloat(cashValue) > 0) {
+          try {
+            await fetch(`${API_BASE}/settlements/${currentSettlementId}/station-cash`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                currency: currency,
+                station_declared_cash: parseFloat(cashValue) || 0
+              })
+            });
+          } catch (err) {
+            console.error(`Failed to save ${currency} cash before submit:`, err);
+          }
+        }
+      }
+
+      const res = await fetch(`${API_BASE}/settlements/${currentSettlementId}/submit`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -732,7 +1247,7 @@ export default function StationSettlementSimple() {
 
   const status = getStatus(totals.difference);
   const isDraft = !settlement || settlement.status === 'DRAFT';
-  const canEdit = isDraft || isAdmin; // Admin can always edit/delete
+  const canEdit = isDraft || isAdminOrManager; // Admin/Manager can always edit/delete
 
   return (
     <div className="settlement-simple">
@@ -743,18 +1258,21 @@ export default function StationSettlementSimple() {
 
       {/* Header */}
       <header className="simple-header">
-        <h1>Station Settlement</h1>
-        <p>{settlement ? `${settlement.settlement_number}` : 'New Settlement'}</p>
-        {isAdmin && settlementId && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <div>
+            <h1>Station Settlement</h1>
+            <p>{settlement ? `${settlement.settlement_number}` : 'New Settlement'}</p>
+          </div>
           <button
-            className="simple-btn simple-btn-danger simple-btn-small"
-            onClick={handleDeleteSettlement}
-            disabled={saving}
-            style={{ marginTop: '12px' }}
+            className="simple-btn simple-btn-secondary"
+            onClick={handleRefresh}
+            disabled={loading}
+            title="Refresh data from server"
+            style={{ padding: '8px 16px', fontSize: '14px' }}
           >
-            Delete Settlement
+            {loading ? '↻ Refreshing...' : '↻ Refresh'}
           </button>
-        )}
+        </div>
       </header>
 
       {/* Messages */}
@@ -837,6 +1355,25 @@ export default function StationSettlementSimple() {
           Add Sales
         </h2>
 
+        {/* POS Selection for Juba */}
+        {isJubaStation && pointOfSales.length > 0 && (
+          <div className="pos-selector">
+            <label className="simple-label">Point of Sale (POS)</label>
+            <div className="pos-buttons">
+              {pointOfSales.map(pos => (
+                <button
+                  key={pos.name}
+                  className={`pos-btn ${selectedPOS === pos.name ? 'active' : ''}`}
+                  onClick={() => setSelectedPOS(pos.name)}
+                >
+                  {pos.name}
+                  <span className="pos-count">({pos.agent_count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Inline Add Form */}
         {canEdit && (
           <div className="inline-form">
@@ -847,8 +1384,9 @@ export default function StationSettlementSimple() {
                   className="simple-select"
                   value={newSale.agent_id}
                   onChange={(e) => setNewSale(prev => ({ ...prev, agent_id: e.target.value }))}
+                  disabled={!selectedPOS}
                 >
-                  <option value="">Select Agent</option>
+                  <option value="">{selectedPOS ? 'Select Agent' : 'Select POS first'}</option>
                   {agents.map(a => (
                     <option key={a.id} value={a.id}>{a.agent_name}</option>
                   ))}
@@ -857,26 +1395,20 @@ export default function StationSettlementSimple() {
             )}
             <div className="form-field">
               <label>Sales Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <FormattedCurrencyInput
                 className="simple-input"
                 placeholder="0.00"
                 value={newSale.amount}
-                onChange={(e) => setNewSale(prev => ({ ...prev, amount: e.target.value }))}
+                onChange={(value) => setNewSale(prev => ({ ...prev, amount: value }))}
               />
             </div>
             <div className="form-field small">
               <label>Refunds</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <FormattedCurrencyInput
                 className="simple-input"
                 placeholder="0.00"
                 value={newSale.cashout}
-                onChange={(e) => setNewSale(prev => ({ ...prev, cashout: e.target.value }))}
+                onChange={(value) => setNewSale(prev => ({ ...prev, cashout: value }))}
               />
             </div>
             <div className="form-field small">
@@ -900,6 +1432,7 @@ export default function StationSettlementSimple() {
           <table className="simple-table">
             <thead>
               <tr>
+                {isJubaStation && <th>POS</th>}
                 {isJubaStation && <th>Agent</th>}
                 <th className="text-right">Sales</th>
                 <th className="text-right">Refunds</th>
@@ -910,6 +1443,7 @@ export default function StationSettlementSimple() {
             <tbody>
               {filteredSales.map(sale => (
                 <tr key={sale.id}>
+                  {isJubaStation && <td className="pos-cell">{sale.point_of_sale || '-'}</td>}
                   {isJubaStation && <td>{sale.agent_name || '-'}</td>}
                   <td className="amount">{formatCurrency(sale.sales_amount || sale.amount)}</td>
                   <td className="amount">{formatCurrency(sale.cashout_amount || 0)}</td>
@@ -930,6 +1464,7 @@ export default function StationSettlementSimple() {
             <tfoot>
               <tr>
                 {isJubaStation && <td></td>}
+                {isJubaStation && <td></td>}
                 <td className="amount"><strong>{formatCurrency(totals.totalSales)}</strong></td>
                 <td className="amount"><strong>{formatCurrency(totals.totalCashout)}</strong></td>
                 <td className="amount"><strong>{formatCurrency(totals.netSales)}</strong></td>
@@ -946,54 +1481,90 @@ export default function StationSettlementSimple() {
           Cash Sent to HQ
         </h2>
 
+        {/* Inline Add Form for Cash Sent */}
+        {canEdit && (
+          <div className="inline-form">
+            {isJubaStation && (
+              <div className="form-field">
+                <label>Agent</label>
+                <select
+                  className="simple-select"
+                  value={newCashSent.agent_id}
+                  onChange={(e) => setNewCashSent(prev => ({ ...prev, agent_id: e.target.value }))}
+                >
+                  <option value="">Select Agent</option>
+                  {agents.map(a => (
+                    <option key={a.id} value={a.id}>{a.agent_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="form-field">
+              <label>Amount</label>
+              <FormattedCurrencyInput
+                className="simple-input"
+                placeholder="0.00"
+                value={newCashSent.amount}
+                onChange={(value) => setNewCashSent(prev => ({ ...prev, amount: value }))}
+              />
+            </div>
+            <button className="simple-btn simple-btn-primary" onClick={handleAddCashSent}>
+              + Add
+            </button>
+          </div>
+        )}
+
         {isJubaStation ? (
-          /* Per-agent cash inputs for Juba */
+          /* Per-agent cash inputs for Juba - shows ALL agents with sales */
           <div className="cash-by-agent">
-            {filteredAgentEntries.length === 0 && agents.length > 0 ? (
-              <div className="empty-state">
-                <p>Save the report first to enter cash amounts per agent.</p>
-              </div>
-            ) : filteredAgentEntries.length === 0 ? (
-              <div className="empty-state">
-                <p>No agents found. Add sales to create agent entries.</p>
-              </div>
-            ) : (
-              filteredAgentEntries.map(entry => (
-                <div key={entry.id} className="agent-cash-row">
+            {agentsFromSales.length > 0 ? (
+              agentsFromSales.map(agent => (
+                <div key={agent.agent_id} className="agent-cash-row">
                   <label>
-                    {entry.agent_name || entry.agent_code}
+                    {agent.agent_name}
                     <span style={{ color: '#64748b', fontWeight: 400, marginLeft: 8 }}>
-                      (Should have: {formatCurrency(entry.expected_cash)})
+                      (Should have: {formatCurrency(agent.expected_cash)})
                     </span>
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="simple-input"
+                  <FormattedCurrencyInput
+                    className="simple-input large"
                     placeholder="0.00"
-                    value={cashSentByAgent[activeCurrency]?.[entry.agent_id] || ''}
-                    onChange={(e) => handleAgentCashChange(entry.agent_id, e.target.value)}
+                    value={cashSentByAgent[activeCurrency]?.[agent.agent_id] ?? ''}
+                    onChange={(value) => handleAgentCashChange(agent.agent_id, value)}
                     disabled={!canEdit}
+                    currency={activeCurrency}
+                    showWords={true}
+                    expectedValue={agent.expected_cash}
                   />
                 </div>
               ))
+            ) : (
+              <div className="empty-state">
+                <p>Add sales first to enter cash amounts per agent.</p>
+              </div>
             )}
           </div>
         ) : (
-          /* Single total input for other stations */
-          <div className="total-cash-row">
-            <label>Total Cash Sent</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              className="simple-input large"
-              placeholder="0.00"
-              value={totalCashSent[activeCurrency] || ''}
-              onChange={(e) => handleTotalCashChange(e.target.value)}
-              disabled={!canEdit}
-            />
+          /* Display total for other stations */
+          <div className="cash-by-agent">
+            <div className="agent-cash-row">
+              <label>
+                Total Cash Sent
+                <span style={{ color: '#64748b', fontWeight: 400, marginLeft: 8 }}>
+                  (Should have: {formatCurrency(totals.expectedCash)})
+                </span>
+              </label>
+              <FormattedCurrencyInput
+                className="simple-input large"
+                placeholder="0.00"
+                value={totalCashSent[activeCurrency] || ''}
+                onChange={(value) => handleTotalCashChange(value)}
+                disabled={!canEdit}
+                currency={activeCurrency}
+                showWords={true}
+                expectedValue={totals.expectedCash}
+              />
+            </div>
           </div>
         )}
 
@@ -1031,14 +1602,13 @@ export default function StationSettlementSimple() {
             </div>
             <div className="form-field small">
               <label>Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <FormattedCurrencyInput
                 className="simple-input"
                 placeholder="0.00"
                 value={newExpense.amount}
-                onChange={(e) => setNewExpense(prev => ({ ...prev, amount: e.target.value }))}
+                onChange={(value) => setNewExpense(prev => ({ ...prev, amount: value }))}
+                currency={activeCurrency}
+                showWords={true}
               />
             </div>
             <div className="form-field">
@@ -1118,7 +1688,7 @@ export default function StationSettlementSimple() {
             {status.text}
           </div>
 
-          <div className="summary-actions">
+          <div className="summary-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             {isDraft ? (
               <>
                 <button
@@ -1131,7 +1701,7 @@ export default function StationSettlementSimple() {
                 <button
                   className="simple-btn simple-btn-success"
                   onClick={handleSubmit}
-                  disabled={saving || !settlementId}
+                  disabled={saving}
                 >
                   Submit Report
                 </button>
@@ -1140,6 +1710,29 @@ export default function StationSettlementSimple() {
               <span className={`status-badge ${settlement?.status?.toLowerCase()}`}>
                 {settlement?.status}
               </span>
+            )}
+
+            {/* Admin/Manager Actions - Edit */}
+            {isAdminOrManager && settlementId && (
+              <button
+                className="simple-btn simple-btn-primary"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                type="button"
+              >
+                Edit
+              </button>
+            )}
+
+            {/* Admin Only - Delete */}
+            {isAdmin && settlementId && (
+              <button
+                className="simple-btn simple-btn-danger"
+                onClick={handleDeleteSettlement}
+                disabled={saving}
+                type="button"
+              >
+                Delete
+              </button>
             )}
           </div>
         </div>

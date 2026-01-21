@@ -18,22 +18,47 @@ import Users from './pages/Users';
 import AppHeader from './pages/AppHeader';
 
 // Station Settlement pages
-import StationSettlementUnified from './pages/StationSettlementUnified';
+import StationSettlementSimple from './pages/StationSettlementSimple';
+import SettlementsList from './pages/SettlementsList';
 import SettlementReview from './pages/SettlementReview';
 import ExpenseCodesAdmin from './pages/ExpenseCodesAdmin';
 import SalesAgentsAdmin from './pages/SalesAgentsAdmin';
 import StationsAdmin from './pages/StationsAdmin';
-import HQSettlement from './pages/HQSettlement';      
+import StationSummarySimple from './pages/StationSummarySimple';      
 
 function App() {
   // Use state for authentication to trigger re-renders
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Helper to check if token is expired
+  const isTokenExpired = (token) => {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expirationTime = payload.exp * 1000;
+      return Date.now() >= expirationTime;
+    } catch (error) {
+      return true;
+    }
+  };
+
   // Check authentication on mount and when localStorage changes
   useEffect(() => {
     const checkAuth = () => {
       const token = localStorage.getItem('token');
+
+      // Check if token exists AND is not expired
+      if (token && isTokenExpired(token)) {
+        logger.debug('🔐 Token expired - logging out');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.setItem('sessionExpiredMessage', 'Your session has expired. Please log in again.');
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
+
       setIsAuthenticated(!!token);
       setIsLoading(false);
       logger.debug('🔐 Auth check:', !!token ? 'Authenticated' : 'Not authenticated');
@@ -41,6 +66,19 @@ function App() {
 
     // Initial check
     checkAuth();
+
+    // Periodic token expiration check (every 5 minutes)
+    const intervalId = setInterval(() => {
+      const token = localStorage.getItem('token');
+      if (token && isTokenExpired(token)) {
+        logger.debug('🔐 Periodic check: Token expired');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.setItem('sessionExpiredMessage', 'Your session has expired. Please log in again.');
+        setIsAuthenticated(false);
+        window.location.href = '/login';
+      }
+    }, 300000); // Check every 5 minutes (300 seconds)
 
     // Listen for storage changes (in case of logout in another tab)
     window.addEventListener('storage', checkAuth);
@@ -52,6 +90,7 @@ function App() {
     window.addEventListener('logout-success', checkAuth);
 
     return () => {
+      clearInterval(intervalId);
       window.removeEventListener('storage', checkAuth);
       window.removeEventListener('login-success', checkAuth);
       window.removeEventListener('logout-success', checkAuth);
@@ -140,14 +179,18 @@ function App() {
               path="/users"
               element={isAuthenticated ? <Users /> : <Navigate to="/login" replace />}
             />
-            {/* Station Settlement routes */}
+            {/* Station Settlement */}
             <Route
               path="/station-settlement"
-              element={isAuthenticated ? <StationSettlementUnified /> : <Navigate to="/login" replace />}
+              element={isAuthenticated ? <StationSettlementSimple /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/station-settlement/:id"
-              element={isAuthenticated ? <StationSettlementUnified /> : <Navigate to="/login" replace />}
+              element={isAuthenticated ? <StationSettlementSimple /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/settlements"
+              element={isAuthenticated ? <SettlementsList /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/settlements/:id/review"
@@ -165,14 +208,19 @@ function App() {
               path="/stations-admin"
               element={isAuthenticated ? <StationsAdmin /> : <Navigate to="/login" replace />}
             />
-            {/* HQ Settlement routes */}
+            {/* Station Summary - simplified single page */}
+            <Route
+              path="/station-summary"
+              element={isAuthenticated ? <StationSummarySimple /> : <Navigate to="/login" replace />}
+            />
+            {/* Redirect old HQ Settlement routes */}
             <Route
               path="/hq-settlement"
-              element={isAuthenticated ? <HQSettlement /> : <Navigate to="/login" replace />}
+              element={<Navigate to="/station-summary" replace />}
             />
             <Route
               path="/hq-settlement/:id"
-              element={isAuthenticated ? <HQSettlement /> : <Navigate to="/login" replace />}
+              element={<Navigate to="/station-summary" replace />}
             />
             <Route
               path="*"

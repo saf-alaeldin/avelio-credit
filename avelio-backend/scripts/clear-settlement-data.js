@@ -1,57 +1,67 @@
 const { Pool } = require('pg');
+require('dotenv').config();
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'avelio_db',
+  database: process.env.DB_NAME || 'avelio_credit',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres123'
+  password: process.env.DB_PASSWORD || 'postgres'
 });
 
-async function clearData() {
-  const client = await pool.connect();
+async function run() {
   try {
-    console.log('Clearing all settlement data...\n');
+    // List settlement-related tables
+    const tables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+      AND (table_name LIKE '%settlement%' OR table_name LIKE '%summary%')
+      ORDER BY table_name
+    `);
 
-    // Clear station settlement related data
-    let result = await client.query('DELETE FROM settlement_audit_logs');
-    console.log(`Deleted ${result.rowCount} settlement_audit_logs`);
+    console.log('Settlement-related tables found:');
+    for (const t of tables.rows) {
+      const count = await pool.query(`SELECT COUNT(*) FROM ${t.table_name}`);
+      console.log(`  ${t.table_name}: ${count.rows[0].count} records`);
+    }
 
-    result = await client.query('DELETE FROM settlement_expenses');
-    console.log(`Deleted ${result.rowCount} settlement_expenses`);
+    console.log('\n--- Clearing data ---\n');
 
-    result = await client.query('DELETE FROM settlement_agent_entries');
-    console.log(`Deleted ${result.rowCount} settlement_agent_entries`);
+    // Clear tables in correct order (child tables first due to foreign keys)
+    const tablesToClear = [
+      'settlement_summary_expenses',
+      'settlement_agent_entries',
+      'settlement_summaries',
+      'station_settlements'
+    ];
 
-    result = await client.query('DELETE FROM settlement_summaries');
-    console.log(`Deleted ${result.rowCount} settlement_summaries`);
+    for (const tableName of tablesToClear) {
+      try {
+        const result = await pool.query(`DELETE FROM ${tableName}`);
+        console.log(`Cleared ${tableName}: ${result.rowCount} records deleted`);
+      } catch (err) {
+        if (err.message.includes('does not exist')) {
+          console.log(`Table ${tableName} does not exist, skipping`);
+        } else {
+          console.log(`Error clearing ${tableName}: ${err.message}`);
+        }
+      }
+    }
 
-    result = await client.query('UPDATE station_sales SET settlement_id = NULL');
-    console.log(`Unlinked ${result.rowCount} station_sales from settlements`);
+    console.log('\n--- Done ---\n');
 
-    result = await client.query('DELETE FROM station_sales');
-    console.log(`Deleted ${result.rowCount} station_sales`);
+    // Verify
+    console.log('Verification:');
+    for (const t of tables.rows) {
+      const count = await pool.query(`SELECT COUNT(*) FROM ${t.table_name}`);
+      console.log(`  ${t.table_name}: ${count.rows[0].count} records`);
+    }
 
-    result = await client.query('DELETE FROM settlements');
-    console.log(`Deleted ${result.rowCount} settlements`);
-
-    // Clear HQ settlement related data
-    result = await client.query('DELETE FROM hq_settlement_expenses');
-    console.log(`Deleted ${result.rowCount} hq_settlement_expenses`);
-
-    result = await client.query('DELETE FROM hq_settlement_summaries');
-    console.log(`Deleted ${result.rowCount} hq_settlement_summaries`);
-
-    result = await client.query('DELETE FROM hq_settlements');
-    console.log(`Deleted ${result.rowCount} hq_settlements`);
-
-    console.log('\n✅ All settlement data cleared successfully!');
-  } catch (error) {
-    console.error('Error:', error.message);
+  } catch (err) {
+    console.error('Error:', err.message);
   } finally {
-    client.release();
     await pool.end();
   }
 }
 
-clearData();
+run();

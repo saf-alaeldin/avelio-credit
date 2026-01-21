@@ -15,6 +15,9 @@ router.get('/:id/summary', requireAuth, settlementController.getSettlementSummar
 // GET settlement agent entries
 router.get('/:id/agents', requireAuth, settlementController.getSettlementAgents);
 
+// CREATE agent entry (for missing entries)
+router.post('/:id/agents', requireAuth, settlementController.createAgentEntry);
+
 // GET settlement expenses
 router.get('/:id/expenses', requireAuth, settlementController.getSettlementExpenses);
 
@@ -29,6 +32,9 @@ router.put('/:id/station-cash', requireAuth, settlementController.updateStationD
 
 // ADD expense to settlement
 router.post('/:id/expenses', requireAuth, settlementController.addExpense);
+
+// UPDATE expense (admin only)
+router.put('/:id/expenses/:expenseId', requireAuth, requireRole('admin'), settlementController.updateExpense);
 
 // REMOVE expense from settlement
 router.delete('/:id/expenses/:expenseId', requireAuth, settlementController.removeExpense);

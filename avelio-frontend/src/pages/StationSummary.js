@@ -2,7 +2,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './StationSummary.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
+  const hostname = window.location.hostname;
+  const port = 5001;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+  return 'http://localhost:5001/api/v1';
+};
+const API_BASE = getApiUrl();
 
 function StationSummary() {
   const { id } = useParams();

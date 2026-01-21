@@ -4,6 +4,9 @@
 // Auto-detect API URL based on window location
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -104,13 +107,15 @@ export const authenticatedFetch = async (url, options = {}) => {
 
 // Helper to get authenticated JSON
 export const apiGet = async (path, params = {}) => {
-  const url = new URL(API_BASE + path);
+  // Build URL - handle both relative and absolute API_BASE
+  const baseUrl = API_BASE.startsWith('/') ? window.location.origin + API_BASE : API_BASE;
+  const url = new URL(baseUrl + path);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined) {
       url.searchParams.set(k, v);
     }
   });
-  
+
   const response = await authenticatedFetch(url.pathname + url.search);
   
   if (!response.ok) {

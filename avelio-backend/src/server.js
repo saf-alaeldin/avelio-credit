@@ -44,8 +44,9 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  // Allow any origin from local network for development
-  /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:3000$/
+  // Allow any origin from local network for development (HTTP and HTTPS)
+  /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+  /^https:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/
 ];
 
 app.use(cors({

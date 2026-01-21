@@ -11,41 +11,419 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 24px;
 }
-.export-page .export-title { margin: 0; font-size: 26px; font-weight: 800; color: #0f172a; }
+.export-page .export-title { margin: 0; font-size: 28px; font-weight: 800; color: #0f172a; }
 .export-page .export-subtitle { margin-top: 4px; color: #64748b; font-size: 14px; }
 
-/* Buttons */
-.export-page .export-btn {
-  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
-  color: #fff; border: none; border-radius: 10px; padding: 10px 14px;
-  font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
-  box-shadow: 0 6px 16px rgba(14,165,233,.25);
+/* Messages */
+.export-page .export-message {
+  margin-bottom: 20px;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid;
 }
-.export-page .export-btn:hover { transform: translateY(-1px); }
-.export-page .export-btn:disabled { opacity: .7; cursor: not-allowed; }
-.export-page .export-btn--ghost { background:#fff; color:#1e293b; border:1px solid #e2e8f0; box-shadow:none; }
-.export-page .export-btn--secondary { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; box-shadow:none; }
-.export-page .export-btn--pdf {
-  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-  box-shadow: 0 6px 16px rgba(16,185,129,.25);
-}
+.export-page .export-message--error { background: #FEF2F2; color: #B91C1C; border-color: #FEE2E2; }
+.export-page .export-message--success { background: #ECFDF5; color: #065F46; border-color: #D1FAE5; }
 
 /* Cards */
 .export-page .export-card {
-  background: rgba(255,255,255,.96);
+  background: rgba(255,255,255,.98);
   border: 1px solid rgba(226,232,240,.9);
-  border-radius: 14px;
-  padding: 18px;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, .06);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, .06);
+  margin-bottom: 20px;
+  position: relative;
 }
 
-/* Form */
-.export-page .export-section { margin-bottom: 10px; }
-.export-page .export-section-title { margin:0 0 4px; font-size:18px; font-weight:800; color:#0f172a; }
-.export-page .export-section-desc { margin:0 0 12px; color:#64748b; font-size:13px; }
+.export-page .export-card--featured {
+  border: 2px solid #0EA5E9;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.02) 0%, rgba(255, 255, 255, 1) 100%);
+}
 
+.export-page .export-card-badge {
+  position: absolute;
+  top: -10px;
+  left: 24px;
+  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
+  color: white;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Section */
+.export-page .export-section { }
+.export-page .export-section-title { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #0f172a; }
+.export-page .export-section-desc { margin: 0 0 20px; color: #64748b; font-size: 14px; line-height: 1.5; }
+
+/* Period Type Selector */
+.export-page .period-type-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.export-page .period-type-btn {
+  padding: 8px 20px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.export-page .period-type-btn:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.export-page .period-type-btn.active {
+  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
+  border-color: #0EA5E9;
+  color: white;
+}
+
+/* Date Picker Section */
+.export-page .date-picker-section {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.export-page .date-picker-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.export-page .date-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-page .date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.export-page .date-input {
+  padding: 10px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  background: white;
+  cursor: pointer;
+  min-width: 160px;
+}
+
+.export-page .date-input:focus {
+  outline: none;
+  border-color: #0EA5E9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.export-page .date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.export-page .date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.export-page .period-display {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.export-page .period-display strong {
+  color: #0f172a;
+}
+
+/* Period Selector (legacy) */
+.export-page .period-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.export-page .period-select {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  cursor: pointer;
+  min-width: 130px;
+}
+
+.export-page .period-select:focus {
+  outline: none;
+  border-color: #0EA5E9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+/* Export Buttons Grid */
+.export-page .export-buttons-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 700px) {
+  .export-page .export-buttons-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.export-page .export-button-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.export-page .export-button-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.export-page .export-button-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: white;
+}
+
+.export-page .export-button-icon.pdf-icon {
+  background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+}
+
+.export-page .export-button-icon.excel-icon {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+}
+
+.export-page .export-button-content h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.export-page .export-button-content p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.export-page .export-features {
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+
+.export-page .export-features li {
+  position: relative;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.8;
+  padding-left: 6px;
+}
+
+.export-page .export-features li::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+/* Buttons */
+.export-page .export-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.export-page .export-btn:hover {
+  transform: translateY(-1px);
+}
+
+.export-page .export-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.export-page .export-btn--pdf {
+  background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+}
+
+.export-page .export-btn--pdf:hover {
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.35);
+}
+
+.export-page .export-btn--excel {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.export-page .export-btn--excel:hover {
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+.export-page .export-btn--secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  width: auto;
+}
+
+.export-page .export-btn--secondary:hover {
+  background: #e2e8f0;
+  box-shadow: none;
+}
+
+/* Button Spinner */
+.export-page .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Actions Row */
+.export-page .export-actions-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Info Section */
+.export-page .export-info-section {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 8px;
+}
+
+.export-page .export-info-title {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.export-page .export-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 700px) {
+  .export-page .export-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.export-page .export-info-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.export-page .export-info-icon-small {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+  flex-shrink: 0;
+}
+
+.export-page .export-info-icon-small.excel {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+}
+
+.export-page .export-info-item strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.export-page .export-info-item p {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* Legacy styles for backwards compatibility */
 .export-page .export-form {
   display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -63,17 +441,42 @@
   background:#fff; border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,.12);
 }
 
-/* Actions & messages */
 .export-page .export-actions { display:flex; gap:10px; margin-top:10px; }
-.export-page .export-message { margin:12px 0 0; border-radius:10px; padding:10px 12px; font-size:13px; border:1px solid; }
-.export-page .export-message--error { background:#FEF2F2; color:#B91C1C; border-color:#FEE2E2; }
-.export-page .export-message--success { background:#ECFDF5; color:#065F46; border-color:#D1FAE5; }
 
-/* Info cards */
+/* Info cards (old) */
 .export-page .export-info { margin-top:16px; display:grid; gap:12px; grid-template-columns:1fr 1fr 1fr; }
 @media (max-width: 980px){ .export-page .export-info { grid-template-columns:1fr; } }
 .export-page .export-info-card { background:rgba(255,255,255,.96); border:1px solid rgba(226,232,240,.9); border-radius:14px; padding:16px; }
 .export-page .export-info-icon { font-size:22px; }
-.export-page .export-info-title { margin:6px 0; font-weight:800; color:#0f172a; }
+.export-page .export-info-content .export-info-title { margin:6px 0; font-weight:800; color:#0f172a; text-transform: none; letter-spacing: normal; }
 .export-page .export-info-text { margin:0; color:#475569; }
 .export-page .export-info-list { margin:8px 0 0 18px; color:#0f172a; }
+
+/* Station Selection */
+.export-page .station-select-section {
+  margin-bottom: 16px;
+}
+
+.export-page .station-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-page .station-select {
+  padding: 12px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  background: white;
+  cursor: pointer;
+  max-width: 300px;
+}
+
+.export-page .station-select:focus {
+  outline: none;
+  border-color: #0EA5E9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}

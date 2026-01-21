@@ -25,32 +25,47 @@ async function logStationSummaryAction(client, summaryId, userId, action, fieldC
 }
 
 // Helper: Get opening balance from previous CLOSED summary
+// Opening Balance = Previous Opening + Previous To Safe (cumulative - represents total cash in safe)
+// Only count summaries that had actual cash from stations (skip empty days)
 async function getOpeningBalance(client, summaryDate, currency) {
   const result = await client.query(
-    `SELECT hss.safe_amount
+    `SELECT hss.opening_balance, hss.safe_amount
      FROM hq_settlement_summaries hss
      JOIN hq_settlements hs ON hss.hq_settlement_id = hs.id
      WHERE hs.status = 'CLOSED'
        AND hs.summary_date < $1
        AND hss.currency = $2
+       AND hss.cash_from_stations > 0
      ORDER BY hs.summary_date DESC
      LIMIT 1`,
     [summaryDate, currency]
   );
-  return result.rows.length > 0 ? parseFloat(result.rows[0].safe_amount) : 0;
+  if (result.rows.length > 0) {
+    // Opening = Previous Opening + Previous To Safe (cumulative total in safe)
+    const prevOpening = parseFloat(result.rows[0].opening_balance) || 0;
+    const prevToSafe = parseFloat(result.rows[0].safe_amount) || 0;
+    return prevOpening + prevToSafe;
+  }
+  return 0;
 }
 
-// Helper: Get cash from all SUBMITTED station settlements for a date
+// Helper: Get cash from all station settlements REGISTERED on a given date
 async function getCashFromStations(client, summaryDate, currency) {
-  // Use station_declared_cash which is the cash sent value entered by stations
-  // For Juba (with agents), this should match agent totals
-  // For non-Juba stations, this is the only source of cash sent
+  // Count settlements based on when they were REGISTERED (created_at date), NOT the sales period
+  // For stations WITH agents (like Juba): use actual_cash_received (sum of agent declared cash)
+  // For stations WITHOUT agents: use station_declared_cash (only if declared)
   const result = await client.query(
-    `SELECT COALESCE(SUM(COALESCE(ss.station_declared_cash, ss.actual_cash_received)), 0) as total_cash
+    `SELECT COALESCE(SUM(
+       CASE
+         WHEN ss.station_declared_cash IS NOT NULL THEN ss.station_declared_cash
+         WHEN ss.actual_cash_received IS NOT NULL AND ss.actual_cash_received > 0 THEN ss.actual_cash_received
+         ELSE 0
+       END
+     ), 0) as total_cash
      FROM settlement_summaries ss
      JOIN settlements s ON ss.settlement_id = s.id
      WHERE s.status IN ('SUBMITTED', 'REVIEW')
-       AND s.period_to = $1
+       AND s.created_at::date = $1
        AND ss.currency = $2`,
     [summaryDate, currency]
   );
@@ -78,8 +93,10 @@ async function calculateStationSummary(client, summaryId, summaryDate) {
     const totalHQExpenses = parseFloat(hqExpenses.rows[0].total_hq_expenses);
 
     // Calculate totals
-    const totalAvailable = openingBalance + cashFromStations;
-    const safeAmount = totalAvailable - totalHQExpenses;
+    // Safe Amount (To Safe) = Cash from Stations - Expenses
+    const safeAmount = cashFromStations - totalHQExpenses;
+    // Total Available = Opening + To Safe (cash available at end of day)
+    const totalAvailable = openingBalance + safeAmount;
 
     // Get station settlements count for this currency
     const stationCount = await client.query(
@@ -162,19 +179,28 @@ const getHQSettlements = async (req, res) => {
 
     const result = await db.query(query, params);
 
-    // Get summaries for each station summary
-    const summaries = [];
-    for (const row of result.rows) {
-      const summaryData = await db.query(
-        `SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = $1`,
-        [row.id]
+    // Get summaries for all HQ settlements in a single batch query (fixes N+1 problem)
+    const hqSettlementIds = result.rows.map(r => r.id);
+    let summariesMap = {};
+
+    if (hqSettlementIds.length > 0) {
+      const summariesResult = await db.query(
+        `SELECT * FROM hq_settlement_summaries WHERE hq_settlement_id = ANY($1)`,
+        [hqSettlementIds]
       );
 
-      summaries.push({
-        ...row,
-        summaries: summaryData.rows
+      // Group summaries by hq_settlement_id
+      summariesResult.rows.forEach(s => {
+        if (!summariesMap[s.hq_settlement_id]) summariesMap[s.hq_settlement_id] = [];
+        summariesMap[s.hq_settlement_id].push(s);
       });
     }
+
+    // Combine HQ settlements with their summaries
+    const summaries = result.rows.map(row => ({
+      ...row,
+      summaries: summariesMap[row.id] || []
+    }));
 
     res.json({
       success: true,
@@ -232,13 +258,14 @@ const getHQSettlementById = async (req, res) => {
       }
     }
 
-    // Get auto-included SUBMITTED station settlements for this date
+    // Get auto-included SUBMITTED station settlements REGISTERED on this date
+    // Uses created_at::date (registration date), not period_to (sales period)
     const stationSettlements = await db.query(
       `SELECT s.*, st.station_code, st.station_name
        FROM settlements s
        JOIN stations st ON s.station_id = st.id
-       WHERE s.status = 'SUBMITTED'
-         AND s.period_to = $1
+       WHERE s.status IN ('SUBMITTED', 'REVIEW', 'APPROVED', 'APPROVED_WITH_VARIANCE')
+         AND s.created_at::date = $1
        ORDER BY st.station_name`,
       [summaryDate]
     );
@@ -841,6 +868,40 @@ const getOrCreateByDate = async (req, res) => {
     try {
       await client.query('BEGIN');
 
+      // AUTO-CLOSE: Close all previous DRAFT summaries before the requested date
+      const previousDrafts = await client.query(
+        `SELECT id, summary_date FROM hq_settlements
+         WHERE status = 'DRAFT' AND summary_date < $1
+         ORDER BY summary_date`,
+        [date]
+      );
+
+      for (const draft of previousDrafts.rows) {
+        // Recalculate before closing to ensure accurate totals
+        await calculateStationSummary(client, draft.id, draft.summary_date);
+
+        // Close the summary
+        await client.query(
+          `UPDATE hq_settlements SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [draft.id]
+        );
+
+        // Log auto-close action
+        await logStationSummaryAction(
+          client,
+          draft.id,
+          userId,
+          'AUTO_CLOSE',
+          'status',
+          { status: 'DRAFT' },
+          { status: 'CLOSED' },
+          `Auto-closed when opening summary for ${date}`,
+          req.ip
+        );
+
+        console.log(`Auto-closed summary for ${draft.summary_date}`);
+      }
+
       // Check if summary exists for this date
       let stationSummary = await client.query(
         'SELECT * FROM hq_settlements WHERE summary_date = $1',
@@ -884,10 +945,15 @@ const getOrCreateByDate = async (req, res) => {
         summaryId = stationSummary.rows[0].id;
       }
 
-      // Calculate/recalculate summary (picks up any new SUBMITTED settlements)
-      console.log('Calculating summary...');
-      await calculateStationSummary(client, summaryId, date);
-      console.log('Summary calculated!');
+      // Only recalculate for DRAFT summaries (CLOSED summaries are locked)
+      const currentStatus = stationSummary.rows.length > 0 ? stationSummary.rows[0].status : 'DRAFT';
+      if (currentStatus === 'DRAFT' || isNew) {
+        console.log('Calculating summary...');
+        await calculateStationSummary(client, summaryId, date);
+        console.log('Summary calculated!');
+      } else {
+        console.log('Skipping recalculation for CLOSED summary');
+      }
 
       console.log('Committing transaction...');
       await client.query('COMMIT');
@@ -902,13 +968,14 @@ const getOrCreateByDate = async (req, res) => {
         [summaryId]
       );
 
-      // Get auto-included SUBMITTED station settlements for this date
+      // Get auto-included SUBMITTED station settlements REGISTERED on this date
+      // Uses created_at::date (registration date), not period_to (sales period)
       const stationSettlements = await db.query(
         `SELECT s.*, st.station_code, st.station_name
          FROM settlements s
          JOIN stations st ON s.station_id = st.id
          WHERE s.status IN ('SUBMITTED', 'REVIEW', 'APPROVED', 'APPROVED_WITH_VARIANCE')
-           AND s.period_to = $1
+           AND s.created_at::date = $1
          ORDER BY st.station_name`,
         [date]
       );

@@ -3,22 +3,16 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import ReceiptDetailsModal from '../pages/ReceiptDetailsModal';
+import { getApiBaseUrl } from '../services/api';
 import './Receipts.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+// Use centralized API URL detection
+const API_BASE = getApiBaseUrl();
 
 async function apiGet(path, params = {}) {
-  const url = new URL(API_BASE + path);
+  // Build URL - handle both relative and absolute API_BASE
+  const baseUrl = API_BASE.startsWith('/') ? window.location.origin + API_BASE : API_BASE;
+  const url = new URL(baseUrl + path);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const token =
     localStorage.getItem('token') ||
@@ -469,6 +463,7 @@ export default function Receipts() {
                             onClick={(e) => {
                               e.stopPropagation();
                               (async () => {
+                                let objectUrl = null;
                                 try {
                                   const token =
                                     localStorage.getItem('token') ||
@@ -477,12 +472,27 @@ export default function Receipts() {
                                   const res = await fetch(`${API_BASE}/receipts/${receipt.id}/pdf`, {
                                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                                   });
-                                  if (!res.ok) throw new Error('Failed to fetch PDF');
+                                  if (!res.ok) {
+                                    const errorText = await res.text().catch(() => '');
+                                    throw new Error(errorText || `Failed to fetch PDF (HTTP ${res.status})`);
+                                  }
                                   const blob = await res.blob();
-                                  const url = window.URL.createObjectURL(blob);
-                                  window.open(url, '_blank');
+                                  if (blob.size === 0) {
+                                    throw new Error('PDF file is empty');
+                                  }
+                                  objectUrl = window.URL.createObjectURL(blob);
+                                  window.open(objectUrl, '_blank');
+                                  // Revoke URL after a delay to allow browser to load
+                                  setTimeout(() => {
+                                    if (objectUrl) window.URL.revokeObjectURL(objectUrl);
+                                  }, 60000); // 1 minute delay
                                 } catch (err) {
-                                  alert('Error downloading PDF: ' + err.message);
+                                  // Clean up object URL if created
+                                  if (objectUrl) window.URL.revokeObjectURL(objectUrl);
+                                  // Show error in a more user-friendly way
+                                  setError(`PDF download failed: ${err.message}`);
+                                  // Clear error after 5 seconds
+                                  setTimeout(() => setError(''), 5000);
                                 }
                               })();
                             }}

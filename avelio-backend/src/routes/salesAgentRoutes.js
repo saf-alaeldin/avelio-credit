@@ -6,6 +6,9 @@ const salesAgentController = require('../controllers/salesAgentController');
 // GET all sales agents
 router.get('/', requireAuth, salesAgentController.getSalesAgents);
 
+// GET distinct point of sales for a station
+router.get('/point-of-sales', requireAuth, salesAgentController.getPointOfSales);
+
 // GET single sales agent
 router.get('/:id', requireAuth, salesAgentController.getSalesAgentById);
 

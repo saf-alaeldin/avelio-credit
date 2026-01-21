@@ -9,10 +9,14 @@ function formatCurrency(amount, currency = 'USD') {
   return `${head}${n.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,')}`;
 }
 
+function formatNumber(num) {
+  return (num || 0).toLocaleString();
+}
+
 function formatDate(dateString) {
   const date = dateString ? new Date(dateString) : new Date();
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
 /**
@@ -36,7 +40,8 @@ async function generateSalesSettlementsReport({
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        margins: { top: 40, bottom: 40, left: 40, right: 40 }
+        margins: { top: 40, bottom: 40, left: 40, right: 40 },
+        bufferPages: true
       });
 
       const chunks = [];
@@ -45,276 +50,300 @@ async function generateSalesSettlementsReport({
       doc.on('error', reject);
 
       // Color palette
-      const PRIMARY = '#0EA5E9';
-      const PRIMARY_DARK = '#0284C7';
+      const PRIMARY = '#074973';
+      const PRIMARY_LIGHT = '#0EA5E9';
       const ACCENT = '#10B981';
       const TEXT = '#1F2937';
       const MUTED = '#6B7280';
-      const LIGHT_BG = '#F9FAFB';
+      const LIGHT_BG = '#F8FAFC';
       const WARNING = '#F59E0B';
       const DANGER = '#EF4444';
+      const WHITE = '#FFFFFF';
 
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      let currentY = doc.page.margins.top;
+      const leftX = doc.page.margins.left;
+      let y = doc.page.margins.top;
+
+      // Use HQ Settlement summaries (same as Station Summary page)
+      const hqSummaries = analytics.hqSummaries || {};
+      const usdSummary = hqSummaries['USD'] || { opening_balance: 0, cash_from_stations: 0, total_available: 0, total_hq_expenses: 0, safe_amount: 0 };
+      const sspSummary = hqSummaries['SSP'] || { opening_balance: 0, cash_from_stations: 0, total_available: 0, total_hq_expenses: 0, safe_amount: 0 };
 
       // ==================== PAGE 1: EXECUTIVE SUMMARY ====================
 
-      // Top border
-      doc.rect(0, 0, doc.page.width, 4).fill(PRIMARY);
-
-      // Header
-      currentY += 10;
-      doc.fontSize(28).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Sales & Settlements Report', doc.page.margins.left, currentY);
-
-      currentY += 35;
-      doc.fontSize(12).font('Helvetica').fillColor(MUTED)
-         .text(`Period: ${periodLabel}`, doc.page.margins.left);
-
-      currentY += 15;
-      doc.text(`Generated: ${formatDate(new Date())}`, doc.page.margins.left);
-
-      currentY += 30;
-
-      // Executive Summary Section
-      doc.fontSize(16).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Executive Summary', doc.page.margins.left, currentY);
-
-      currentY += 25;
-
-      // Summary cards (2x2 grid)
-      const cardWidth = (pageWidth - 20) / 2;
-      const cardHeight = 70;
-
-      // Card 1: Total Sales
-      doc.roundedRect(doc.page.margins.left, currentY, cardWidth, cardHeight, 5)
-         .fillAndStroke(LIGHT_BG, PRIMARY);
-      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
-         .text('TOTAL SALES', doc.page.margins.left + 15, currentY + 15);
-      doc.fontSize(24).font('Helvetica-Bold').fillColor(PRIMARY)
-         .text(analytics.totalSales || 0, doc.page.margins.left + 15, currentY + 30);
-      doc.fontSize(9).fillColor(MUTED)
-         .text(`${formatCurrency(analytics.totalRevenue || 0, 'USD')}`, doc.page.margins.left + 15, currentY + 55);
-
-      // Card 2: Total Settlements
-      doc.roundedRect(doc.page.margins.left + cardWidth + 20, currentY, cardWidth, cardHeight, 5)
-         .fillAndStroke(LIGHT_BG, ACCENT);
-      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
-         .text('SETTLEMENTS', doc.page.margins.left + cardWidth + 35, currentY + 15);
-      doc.fontSize(24).font('Helvetica-Bold').fillColor(ACCENT)
-         .text(analytics.totalSettlements || 0, doc.page.margins.left + cardWidth + 35, currentY + 30);
-      doc.fontSize(9).fillColor(MUTED)
-         .text(`${analytics.settlementsApproved || 0} Approved`, doc.page.margins.left + cardWidth + 35, currentY + 55);
-
-      currentY += cardHeight + 20;
-
-      // Card 3: Active Stations
-      doc.roundedRect(doc.page.margins.left, currentY, cardWidth, cardHeight, 5)
-         .fillAndStroke(LIGHT_BG, WARNING);
-      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
-         .text('ACTIVE STATIONS', doc.page.margins.left + 15, currentY + 15);
-      doc.fontSize(24).font('Helvetica-Bold').fillColor(WARNING)
-         .text(analytics.activeStations || 0, doc.page.margins.left + 15, currentY + 30);
-      doc.fontSize(9).fillColor(MUTED)
-         .text(`${analytics.activeAgents || 0} Agents`, doc.page.margins.left + 15, currentY + 55);
-
-      // Card 4: Average Transaction
-      doc.roundedRect(doc.page.margins.left + cardWidth + 20, currentY, cardWidth, cardHeight, 5)
-         .fillAndStroke(LIGHT_BG, PRIMARY_DARK);
-      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
-         .text('AVG TRANSACTION', doc.page.margins.left + cardWidth + 35, currentY + 15);
-      doc.fontSize(20).font('Helvetica-Bold').fillColor(PRIMARY_DARK)
-         .text(formatCurrency(analytics.avgTransaction || 0, 'USD'), doc.page.margins.left + cardWidth + 35, currentY + 32);
-
-      currentY += cardHeight + 30;
-
-      // Revenue Breakdown by Currency
-      doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Revenue by Currency', doc.page.margins.left, currentY);
-
-      currentY += 20;
-
-      if (analytics.byCurrency && analytics.byCurrency.length > 0) {
-        analytics.byCurrency.forEach((curr, index) => {
-          const barY = currentY + (index * 40);
-          const barMaxWidth = pageWidth - 200;
-          const percentage = (curr.total / analytics.totalRevenue) * 100;
-          const barWidth = (percentage / 100) * barMaxWidth;
-
-          // Currency label
-          doc.fontSize(11).font('Helvetica-Bold').fillColor(TEXT)
-             .text(curr.currency, doc.page.margins.left, barY);
-
-          // Progress bar
-          doc.roundedRect(doc.page.margins.left + 60, barY, barMaxWidth, 20, 3)
-             .fillOpacity(0.1).fill(PRIMARY);
-          doc.roundedRect(doc.page.margins.left + 60, barY, barWidth, 20, 3)
-             .fillOpacity(1).fill(PRIMARY);
-
-          // Amount
-          doc.fontSize(10).font('Helvetica').fillColor(TEXT)
-             .text(formatCurrency(curr.total, curr.currency), doc.page.margins.left + 80 + barMaxWidth, barY + 5);
-        });
-        currentY += (analytics.byCurrency.length * 40) + 10;
+      // Header with logo
+      const logoPath = path.join(__dirname, '../assets/logo.png');
+      if (fs.existsSync(logoPath)) {
+        try {
+          doc.image(logoPath, leftX, y, { height: 40 });
+        } catch (e) {
+          doc.fontSize(16).font('Helvetica-Bold').fillColor(PRIMARY)
+             .text('KUSH AIR', leftX, y + 10);
+        }
+      } else {
+        doc.fontSize(16).font('Helvetica-Bold').fillColor(PRIMARY)
+           .text('KUSH AIR', leftX, y + 10);
       }
 
-      currentY += 20;
+      // Report title - positioned on right side
+      doc.fontSize(20).font('Helvetica-Bold').fillColor(TEXT)
+         .text('Sales & Settlements Report', leftX, y + 5, { width: pageWidth, align: 'right', lineBreak: false });
 
-      // Sales by Station
+      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
+         .text(periodLabel, leftX, y + 30, { width: pageWidth, align: 'right', lineBreak: false });
+
+      y += 55;
+
+      // Divider line
+      doc.strokeColor(PRIMARY).lineWidth(2)
+         .moveTo(leftX, y).lineTo(leftX + pageWidth, y).stroke();
+
+      y += 20;
+
+      // Key Performance Indicators
       doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Performance by Station', doc.page.margins.left, currentY);
+         .text('Key Performance Indicators', leftX, y);
 
-      currentY += 20;
+      y += 20;
+
+      // KPI Cards - Row 1
+      const kpiWidth = (pageWidth - 30) / 4;
+      const kpiHeight = 60;
+
+      const kpis = [
+        { label: 'Total Sales', value: formatNumber(analytics.totalSales || 0), color: PRIMARY },
+        { label: 'Settlements', value: formatNumber(analytics.totalSettlements || 0), color: ACCENT },
+        { label: 'Active Stations', value: formatNumber(analytics.activeStations || 0), color: WARNING },
+        { label: 'Active Agents', value: formatNumber(analytics.activeAgents || 0), color: PRIMARY_LIGHT }
+      ];
+
+      kpis.forEach((kpi, i) => {
+        const kpiX = leftX + (i * (kpiWidth + 10));
+        doc.roundedRect(kpiX, y, kpiWidth, kpiHeight, 4).fill(LIGHT_BG);
+        doc.roundedRect(kpiX, y, 4, kpiHeight, 2).fill(kpi.color);
+
+        doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+           .text(kpi.label, kpiX + 12, y + 12);
+        doc.fontSize(18).font('Helvetica-Bold').fillColor(kpi.color)
+           .text(kpi.value, kpiX + 12, y + 28);
+      });
+
+      y += kpiHeight + 25;
+
+      // Revenue Summary Section
+      doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
+         .text('Revenue Summary', leftX, y);
+
+      y += 20;
+
+      // Revenue by currency
+      const halfWidth = (pageWidth - 15) / 2;
+
+      // USD Box
+      doc.roundedRect(leftX, y, halfWidth, 75, 4).fill('#ECFDF5');
+      doc.roundedRect(leftX, y, halfWidth, 4, 2).fill(ACCENT);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(ACCENT)
+         .text('USD Revenue', leftX + 15, y + 15);
+
+      const usdSales = sales.filter(s => s.currency === 'USD');
+      const usdTotal = usdSales.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+      doc.fontSize(22).font('Helvetica-Bold').fillColor(TEXT)
+         .text(formatCurrency(usdTotal, 'USD'), leftX + 15, y + 32);
+      doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+         .text(`${usdSales.length} transactions`, leftX + 15, y + 58);
+
+      // SSP Box
+      doc.roundedRect(leftX + halfWidth + 15, y, halfWidth, 75, 4).fill('#FEF3C7');
+      doc.roundedRect(leftX + halfWidth + 15, y, halfWidth, 4, 2).fill(WARNING);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(WARNING)
+         .text('SSP Revenue', leftX + halfWidth + 30, y + 15);
+
+      const sspSales = sales.filter(s => s.currency === 'SSP');
+      const sspTotal = sspSales.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+      doc.fontSize(22).font('Helvetica-Bold').fillColor(TEXT)
+         .text(formatCurrency(sspTotal, 'SSP'), leftX + halfWidth + 30, y + 32);
+      doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+         .text(`${sspSales.length} transactions`, leftX + halfWidth + 30, y + 58);
+
+      y += 95;
+
+      // Cash Summary (same as Station Summary page)
+      doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
+         .text('Cash Summary', leftX, y);
+
+      y += 20;
+
+      // Financial metrics table
+      const finColWidths = [180, 165, 165];
+      const finHeaders = ['Metric', 'USD', 'SSP'];
 
       // Table header
-      const col1X = doc.page.margins.left;
-      const col2X = doc.page.margins.left + 150;
-      const col3X = doc.page.margins.left + 280;
-      const col4X = doc.page.margins.left + 400;
+      doc.rect(leftX, y, pageWidth, 22).fill(PRIMARY);
+      let finX = leftX;
+      finHeaders.forEach((header, i) => {
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(WHITE)
+           .text(header, finX + 8, y + 6, { width: finColWidths[i] - 16 });
+        finX += finColWidths[i];
+      });
 
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(MUTED);
-      doc.text('STATION', col1X, currentY);
-      doc.text('SALES', col2X, currentY);
-      doc.text('REVENUE', col3X, currentY);
-      doc.text('AGENTS', col4X, currentY);
+      y += 22;
 
-      currentY += 15;
-      doc.strokeColor(LIGHT_BG).lineWidth(1)
-         .moveTo(doc.page.margins.left, currentY)
-         .lineTo(doc.page.margins.left + pageWidth, currentY)
-         .stroke();
+      // Financial rows matching Station Summary format
+      const financialRows = [
+        { label: 'Opening Balance', usd: usdSummary.opening_balance, ssp: sspSummary.opening_balance, bold: false },
+        { label: '+ Cash from Stations', usd: usdSummary.cash_from_stations, ssp: sspSummary.cash_from_stations, bold: false },
+        { label: '= Total Available', usd: usdSummary.total_available, ssp: sspSummary.total_available, bold: true },
+        { label: '- HQ Expenses', usd: usdSummary.total_hq_expenses, ssp: sspSummary.total_hq_expenses, bold: false, isExpense: true },
+        { label: '= TO SAFE', usd: usdSummary.safe_amount, ssp: sspSummary.safe_amount, bold: true, highlight: true }
+      ];
 
-      currentY += 10;
+      financialRows.forEach((row, i) => {
+        const rowY = y + (i * 24);
+        const bgColor = row.highlight ? '#ECFDF5' : (i % 2 === 0 ? WHITE : LIGHT_BG);
+        doc.rect(leftX, rowY, pageWidth, 24).fill(bgColor);
 
-      // Table rows
-      if (analytics.byStation && analytics.byStation.length > 0) {
-        analytics.byStation.slice(0, 6).forEach((station, index) => {
-          const rowY = currentY + (index * 25);
+        finX = leftX;
+        const fontWeight = row.bold ? 'Helvetica-Bold' : 'Helvetica';
+        doc.fontSize(10).font(fontWeight).fillColor(TEXT)
+           .text(row.label, finX + 8, rowY + 7, { width: finColWidths[0] - 16 });
+        finX += finColWidths[0];
 
-          doc.fontSize(10).font('Helvetica').fillColor(TEXT);
-          doc.text(station.station_name || station.station_code, col1X, rowY);
-          doc.text(station.sales_count || 0, col2X, rowY);
-          doc.text(formatCurrency(station.total_amount || 0, 'USD'), col3X, rowY);
-          doc.text(station.agent_count || 0, col4X, rowY);
-        });
-        currentY += (Math.min(analytics.byStation.length, 6) * 25);
-      }
+        const usdColor = row.isExpense ? DANGER : (row.highlight ? ACCENT : TEXT);
+        const usdPrefix = row.isExpense ? '-' : '';
+        doc.font(fontWeight).fillColor(usdColor)
+           .text(usdPrefix + formatCurrency(row.usd, 'USD'), finX + 8, rowY + 7, { width: finColWidths[1] - 16 });
+        finX += finColWidths[1];
 
-      // ==================== PAGE 2: DETAILED INSIGHTS ====================
+        const sspColor = row.isExpense ? DANGER : (row.highlight ? ACCENT : TEXT);
+        const sspPrefix = row.isExpense ? '-' : '';
+        doc.font(fontWeight).fillColor(sspColor)
+           .text(sspPrefix + formatCurrency(row.ssp, 'SSP'), finX + 8, rowY + 7, { width: finColWidths[2] - 16 });
+      });
+
+      y += (financialRows.length * 24) + 15;
+
+      // ==================== PAGE 2: STATION PERFORMANCE ====================
       doc.addPage();
-      currentY = doc.page.margins.top + 20;
+      y = doc.page.margins.top;
 
       // Page title
       doc.fontSize(18).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Detailed Insights & Analytics', doc.page.margins.left, currentY);
+         .text('Station Performance', leftX, y);
 
-      currentY += 30;
+      doc.fontSize(10).font('Helvetica').fillColor(MUTED)
+         .text(`Report Period: ${periodLabel}`, leftX, y + 25);
 
-      // Settlement Status Breakdown
-      doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
-         .text('Settlement Status', doc.page.margins.left, currentY);
+      y += 50;
 
-      currentY += 20;
-
-      if (analytics.settlementStatus) {
-        const statusData = [
-          { label: 'Draft', count: analytics.settlementStatus.draft || 0, color: MUTED },
-          { label: 'Submitted', count: analytics.settlementStatus.submitted || 0, color: WARNING },
-          { label: 'Approved', count: analytics.settlementStatus.approved || 0, color: ACCENT },
-          { label: 'Rejected', count: analytics.settlementStatus.rejected || 0, color: DANGER }
-        ];
-
-        statusData.forEach((status, index) => {
-          const boxY = currentY + (index * 35);
-
-          // Color box
-          doc.roundedRect(doc.page.margins.left, boxY, 60, 25, 3)
-             .fill(status.color);
-
-          // Count
-          doc.fontSize(14).font('Helvetica-Bold').fillColor('#FFFFFF')
-             .text(status.count, doc.page.margins.left + 20, boxY + 6);
-
-          // Label
-          doc.fontSize(11).font('Helvetica').fillColor(TEXT)
-             .text(status.label, doc.page.margins.left + 75, boxY + 7);
-        });
-
-        currentY += 150;
-      }
-
-      // Point of Sale Analysis (Juba specific)
-      if (analytics.jubaPointOfSale && analytics.jubaPointOfSale.length > 0) {
-        doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
-           .text('Juba - Point of Sale Performance', doc.page.margins.left, currentY);
-
-        currentY += 20;
-
-        analytics.jubaPointOfSale.forEach((pos, index) => {
-          const posY = currentY + (index * 30);
-
-          doc.fontSize(10).font('Helvetica-Bold').fillColor(TEXT)
-             .text(pos.point_of_sale, doc.page.margins.left, posY);
-
-          doc.fontSize(9).font('Helvetica').fillColor(MUTED)
-             .text(`${pos.sales_count} sales • ${formatCurrency(pos.total_amount, 'USD')}`,
-                   doc.page.margins.left, posY + 12);
-
-          // Small bar
-          const barWidth = (pos.sales_count / analytics.totalSales) * 200;
-          doc.roundedRect(doc.page.margins.left + 250, posY + 8, barWidth, 8, 2)
-             .fill(PRIMARY);
-        });
-
-        currentY += (analytics.jubaPointOfSale.length * 30) + 20;
-      }
-
-      // Top Performing Agents
-      if (analytics.topAgents && analytics.topAgents.length > 0) {
-        doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
-           .text('Top Performing Agents', doc.page.margins.left, currentY);
-
-        currentY += 20;
+      // Station Performance Table
+      if (analytics.byStation && analytics.byStation.length > 0) {
+        const stationColWidths = [100, 70, 100, 100, 80];
+        const stationHeaders = ['Station', 'Sales', 'Revenue (USD)', 'Revenue (SSP)', 'Agents'];
 
         // Table header
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(MUTED);
-        doc.text('AGENT', doc.page.margins.left, currentY);
-        doc.text('STATION', doc.page.margins.left + 180, currentY);
-        doc.text('SALES', doc.page.margins.left + 280, currentY);
-        doc.text('REVENUE', doc.page.margins.left + 360, currentY);
+        doc.rect(leftX, y, pageWidth, 24).fill(PRIMARY);
+        let stX = leftX;
+        stationHeaders.forEach((header, i) => {
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(WHITE)
+             .text(header, stX + 6, y + 7, { width: stationColWidths[i] - 12 });
+          stX += stationColWidths[i];
+        });
 
-        currentY += 15;
-        doc.strokeColor(LIGHT_BG).lineWidth(1)
-           .moveTo(doc.page.margins.left, currentY)
-           .lineTo(doc.page.margins.left + pageWidth, currentY)
-           .stroke();
+        y += 24;
 
-        currentY += 10;
+        // Station rows
+        analytics.byStation.slice(0, 12).forEach((station, i) => {
+          const rowY = y + (i * 24);
+          const bgColor = i % 2 === 0 ? WHITE : LIGHT_BG;
+          doc.rect(leftX, rowY, pageWidth, 24).fill(bgColor);
 
-        analytics.topAgents.slice(0, 8).forEach((agent, index) => {
-          const rowY = currentY + (index * 22);
+          // Get station-specific currency totals
+          const stationSales = sales.filter(s => s.station_code === station.station_code);
+          const stationUSD = stationSales.filter(s => s.currency === 'USD')
+                              .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+          const stationSSP = stationSales.filter(s => s.currency === 'SSP')
+                              .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
 
-          doc.fontSize(9).font('Helvetica').fillColor(TEXT);
-          doc.text(agent.agent_name, doc.page.margins.left, rowY, { width: 160 });
-          doc.text(agent.station_code || '-', doc.page.margins.left + 180, rowY);
-          doc.text(agent.sales_count, doc.page.margins.left + 280, rowY);
-          doc.text(formatCurrency(agent.total_amount, 'USD'), doc.page.margins.left + 360, rowY);
+          stX = leftX;
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(TEXT)
+             .text(station.station_name || station.station_code, stX + 6, rowY + 7, { width: stationColWidths[0] - 12 });
+          stX += stationColWidths[0];
+
+          doc.fontSize(9).font('Helvetica').fillColor(TEXT)
+             .text(formatNumber(station.sales_count || 0), stX + 6, rowY + 7);
+          stX += stationColWidths[1];
+
+          doc.text(formatCurrency(stationUSD, 'USD'), stX + 6, rowY + 7);
+          stX += stationColWidths[2];
+
+          doc.text(formatCurrency(stationSSP, 'SSP'), stX + 6, rowY + 7);
+          stX += stationColWidths[3];
+
+          doc.text(station.agent_count || 0, stX + 6, rowY + 7);
+        });
+
+        y += (Math.min(analytics.byStation.length, 12) * 24) + 30;
+      }
+
+      // Top Agents Section
+      if (analytics.topAgents && analytics.topAgents.length > 0) {
+        doc.fontSize(14).font('Helvetica-Bold').fillColor(TEXT)
+           .text('Top Performing Agents', leftX, y);
+
+        y += 20;
+
+        const agentColWidths = [150, 80, 70, 110, 100];
+        const agentHeaders = ['Agent Name', 'Station', 'Sales', 'Revenue (USD)', 'Avg Sale'];
+
+        // Table header
+        doc.rect(leftX, y, pageWidth, 22).fill(PRIMARY);
+        let agX = leftX;
+        agentHeaders.forEach((header, i) => {
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(WHITE)
+             .text(header, agX + 6, y + 6, { width: agentColWidths[i] - 12 });
+          agX += agentColWidths[i];
+        });
+
+        y += 22;
+
+        analytics.topAgents.slice(0, 10).forEach((agent, i) => {
+          const rowY = y + (i * 22);
+          const bgColor = i % 2 === 0 ? WHITE : LIGHT_BG;
+          doc.rect(leftX, rowY, pageWidth, 22).fill(bgColor);
+
+          const avgSale = agent.sales_count > 0 ? agent.total_amount / agent.sales_count : 0;
+
+          agX = leftX;
+          doc.fontSize(9).font('Helvetica').fillColor(TEXT)
+             .text(agent.agent_name || 'Unknown', agX + 6, rowY + 6, { width: agentColWidths[0] - 12 });
+          agX += agentColWidths[0];
+
+          doc.text(agent.station_code || '-', agX + 6, rowY + 6);
+          agX += agentColWidths[1];
+
+          doc.text(formatNumber(agent.sales_count), agX + 6, rowY + 6);
+          agX += agentColWidths[2];
+
+          doc.text(formatCurrency(agent.total_amount, 'USD'), agX + 6, rowY + 6);
+          agX += agentColWidths[3];
+
+          doc.text(formatCurrency(avgSale, 'USD'), agX + 6, rowY + 6);
         });
       }
 
-      // Footer on all pages
-      const footerY = doc.page.height - 50;
-      doc.fontSize(8).font('Helvetica').fillColor(MUTED)
-         .text('Kush Air - Sales & Settlements Report', doc.page.margins.left, footerY, {
-           align: 'center',
-           width: pageWidth
-         });
+      // Footer
+      const addFooter = (pageNum, totalPages) => {
+        const footerY = doc.page.height - 35;
+        doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+           .text(`Generated: ${formatDate(new Date())} | Kush Air - Sales & Settlements Report | Page ${pageNum} of ${totalPages}`,
+                 leftX, footerY, { width: pageWidth, align: 'center' });
+      };
 
-      doc.fontSize(8).fillColor(MUTED)
-         .text(`Page 2 of 2`, doc.page.margins.left, footerY + 12, {
-           align: 'center',
-           width: pageWidth
-         });
+      // Add footers
+      doc.switchToPage(0);
+      addFooter(1, 2);
+      doc.switchToPage(1);
+      addFooter(2, 2);
 
       doc.end();
 

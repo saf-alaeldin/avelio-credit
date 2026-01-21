@@ -626,14 +626,19 @@ const updateSale = async (req, res) => {
   }
 };
 
-// DELETE sale (only if not settled)
+// DELETE sale (admin can delete any, others only if settlement is DRAFT or no settlement)
 const deleteSale = async (req, res) => {
   try {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const isAdmin = userRole === 'admin';
 
-    // Check if sale exists and is not settled
+    // Check if sale exists and get settlement status
     const existing = await db.query(
-      'SELECT id, settlement_id FROM station_sales WHERE id = $1',
+      `SELECT ss.id, ss.settlement_id, s.status as settlement_status
+       FROM station_sales ss
+       LEFT JOIN settlements s ON ss.settlement_id = s.id
+       WHERE ss.id = $1`,
       [id]
     );
 
@@ -644,10 +649,13 @@ const deleteSale = async (req, res) => {
       });
     }
 
-    if (existing.rows[0].settlement_id) {
+    const sale = existing.rows[0];
+
+    // Admin can delete any sale; others only if no settlement or DRAFT status
+    if (!isAdmin && sale.settlement_id && sale.settlement_status !== 'DRAFT') {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete a settled sale'
+        message: `Cannot delete sale from a ${sale.settlement_status} settlement`
       });
     }
 

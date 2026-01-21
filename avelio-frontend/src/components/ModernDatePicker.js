@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { format, parse, isValid, startOfMonth, endOfMonth, eachDayOfInterval,
-         addMonths, subMonths, isSameDay, isAfter, isBefore } from 'date-fns';
+         addMonths, subMonths, isSameDay, isAfter, isBefore, startOfDay } from 'date-fns';
 import './ModernDatePicker.css';
 
 const ModernDatePicker = ({
@@ -59,8 +59,10 @@ const ModernDatePicker = ({
   };
 
   const isDateDisabled = (date) => {
-    if (minDate && isBefore(date, minDate)) return true;
-    if (maxDate && isAfter(date, maxDate)) return true;
+    // Normalize dates to start of day for proper comparison (allows same-day selection)
+    const normalizedDate = startOfDay(date);
+    if (minDate && isBefore(normalizedDate, startOfDay(minDate))) return true;
+    if (maxDate && isAfter(normalizedDate, startOfDay(maxDate))) return true;
     return false;
   };
 

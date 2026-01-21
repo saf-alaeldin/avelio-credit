@@ -5,6 +5,9 @@ import './Users.css';
 // Auto-detect API URL based on window location
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -224,6 +227,8 @@ export default function Users() {
         return 'badge-admin';
       case 'manager':
         return 'badge-manager';
+      case 'auditor':
+        return 'badge-auditor';
       default:
         return 'badge-staff';
     }
@@ -422,6 +427,7 @@ export default function Users() {
                   >
                     <option value="staff">Staff</option>
                     <option value="manager">Manager</option>
+                    <option value="auditor">Auditor</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -536,6 +542,7 @@ export default function Users() {
                   >
                     <option value="staff">Staff</option>
                     <option value="manager">Manager</option>
+                    <option value="auditor">Auditor</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>

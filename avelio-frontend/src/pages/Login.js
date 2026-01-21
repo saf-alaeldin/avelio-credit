@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, AlertCircle } from 'lucide-react';
+import { Lock, User, AlertCircle, Clock } from 'lucide-react';
 import { handleLogin } from '../utils/auth';
 import './Login.css';
 
@@ -10,6 +10,16 @@ function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState('');
+
+  // Check for session expired message on mount
+  useEffect(() => {
+    const expiredMessage = localStorage.getItem('sessionExpiredMessage');
+    if (expiredMessage) {
+      setSessionExpiredMessage(expiredMessage);
+      localStorage.removeItem('sessionExpiredMessage');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,6 +32,10 @@ function Login() {
       // Auto-detect API URL based on window location
       const getApiUrl = () => {
         if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+        // If accessed via HTTPS (through Caddy proxy), use relative path
+        if (window.location.protocol === 'https:') {
+          return '/api/v1';
+        }
         const hostname = window.location.hostname;
         const port = 5001;
         if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -96,6 +110,24 @@ function Login() {
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="login-form">
+          {sessionExpiredMessage && (
+            <div className="session-expired-message" style={{
+              backgroundColor: '#fef3c7',
+              border: '1px solid #f59e0b',
+              color: '#92400e',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '14px'
+            }}>
+              <Clock size={18} />
+              {sessionExpiredMessage}
+            </div>
+          )}
+
           {error && (
             <div className="error-message">
               <AlertCircle size={18} />

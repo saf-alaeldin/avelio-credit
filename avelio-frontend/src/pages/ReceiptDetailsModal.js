@@ -5,6 +5,9 @@ import './ReceiptDetailsModal.css';
 // Auto-detect API URL based on window location
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {

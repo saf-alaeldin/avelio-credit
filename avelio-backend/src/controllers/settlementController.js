@@ -1,6 +1,11 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 
+// Helper: Round monetary values to 2 decimal places to avoid float precision issues
+const roundMoney = (value) => {
+  return Math.round((parseFloat(value) || 0) * 100) / 100;
+};
+
 // Helper: Log settlement action
 async function logSettlementAction(client, settlementId, userId, action, fieldChanged, oldValue, newValue, notes, ipAddress) {
   try {
@@ -36,21 +41,25 @@ async function calculateSettlementExpectedCash(client, settlementId) {
 
   const { station_id, period_from, period_to } = settlement.rows[0];
 
-  // Get all unsettled sales for this station and date range, grouped by agent and currency
+  // Get all unsettled sales for this station and date range, grouped by agent, currency, and POS
+  // Calculate net amount as (sales_amount - cashout_amount)
+  // Use the sale's point_of_sale (ss.point_of_sale) NOT the agent's assigned POS
   const salesSummary = await client.query(
-    `SELECT agent_id, currency, SUM(amount) as total_amount, COUNT(*) as sale_count
-     FROM station_sales
-     WHERE station_id = $1
-       AND transaction_date >= $2
-       AND transaction_date <= $3
-       AND (settlement_id IS NULL OR settlement_id = $4)
-     GROUP BY agent_id, currency`,
+    `SELECT ss.agent_id, ss.currency, ss.point_of_sale,
+            SUM(COALESCE(ss.sales_amount, ss.amount, 0) - COALESCE(ss.cashout_amount, 0)) as total_amount,
+            COUNT(*) as sale_count
+     FROM station_sales ss
+     WHERE ss.station_id = $1
+       AND ss.transaction_date >= $2
+       AND ss.transaction_date <= $3
+       AND (ss.settlement_id IS NULL OR ss.settlement_id = $4)
+     GROUP BY ss.agent_id, ss.currency, ss.point_of_sale`,
     [station_id, period_from, period_to, settlementId]
   );
 
-  // Clear existing entries for this settlement (preserve declared values)
+  // Get existing entries for this settlement (to preserve declared_cash values)
   const existingEntries = await client.query(
-    `SELECT agent_id, currency, declared_cash, notes FROM settlement_agent_entries WHERE settlement_id = $1`,
+    `SELECT id, agent_id, currency, point_of_sale, declared_cash, notes FROM settlement_agent_entries WHERE settlement_id = $1`,
     [settlementId]
   );
 
@@ -59,27 +68,58 @@ async function calculateSettlementExpectedCash(client, settlementId) {
     existingMap[`${e.agent_id}_${e.currency}`] = e;
   });
 
-  // Delete and recreate entries
-  await client.query('DELETE FROM settlement_agent_entries WHERE settlement_id = $1', [settlementId]);
+  // Track which agents have sales
+  const agentsWithSales = new Set();
 
-  // Insert new entries with calculated expected cash
+  // Update or insert entries for agents with sales
   for (const row of salesSummary.rows) {
     const key = `${row.agent_id}_${row.currency}`;
+    agentsWithSales.add(key);
     const existing = existingMap[key];
 
-    await client.query(
-      `INSERT INTO settlement_agent_entries
-       (settlement_id, agent_id, currency, expected_cash, declared_cash, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        settlementId,
-        row.agent_id,
-        row.currency,
-        parseFloat(row.total_amount),
-        existing ? existing.declared_cash : null,
-        existing ? existing.notes : null
-      ]
-    );
+    if (existing) {
+      // Update existing entry with new expected_cash (rounded for precision)
+      await client.query(
+        `UPDATE settlement_agent_entries
+         SET expected_cash = $1, point_of_sale = COALESCE($2, point_of_sale)
+         WHERE id = $3`,
+        [
+          roundMoney(row.total_amount),
+          row.point_of_sale || null,
+          existing.id
+        ]
+      );
+    } else {
+      // Insert new entry for agent with sales (rounded for precision)
+      await client.query(
+        `INSERT INTO settlement_agent_entries
+         (settlement_id, agent_id, currency, expected_cash, declared_cash, notes, point_of_sale)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          settlementId,
+          row.agent_id,
+          row.currency,
+          roundMoney(row.total_amount),
+          null,
+          null,
+          row.point_of_sale || null
+        ]
+      );
+    }
+  }
+
+  // For existing entries without sales: set expected_cash to 0, but ALWAYS keep the entry
+  // NEVER auto-delete agent entries - they contain declared_cash which should be preserved
+  // If an entry needs to be deleted, it should be done explicitly by the user
+  for (const entry of existingEntries.rows) {
+    const key = `${entry.agent_id}_${entry.currency}`;
+    if (!agentsWithSales.has(key)) {
+      // Agent has no sales - set expected_cash to 0 but keep the entry
+      await client.query(
+        `UPDATE settlement_agent_entries SET expected_cash = 0 WHERE id = $1`,
+        [entry.id]
+      );
+    }
   }
 
   // Link sales to this settlement
@@ -151,17 +191,17 @@ async function calculateSettlementSummary(client, settlementId) {
     );
 
     const openingBalance = previousSettlement.rows.length > 0
-      ? parseFloat(previousSettlement.rows[0].final_variance) || 0
+      ? roundMoney(previousSettlement.rows[0].final_variance)
       : 0;
     const openingBalanceSettlementId = previousSettlement.rows.length > 0
       ? previousSettlement.rows[0].settlement_id
       : null;
 
-    const expectedCash = parseFloat(expectedResult.rows[0].expected_cash);
-    const totalExpenses = parseFloat(expensesResult.rows[0].total_expenses);
+    const expectedCash = roundMoney(expectedResult.rows[0].expected_cash);
+    const totalExpenses = roundMoney(expensesResult.rows[0].total_expenses);
 
-    // Expected Net Cash = Expected Cash - Expenses + Opening Balance
-    const expectedNetCash = expectedCash - totalExpenses + openingBalance;
+    // Expected Net Cash = Expected Cash - Expenses + Opening Balance (rounded to avoid float precision issues)
+    const expectedNetCash = roundMoney(expectedCash - totalExpenses + openingBalance);
 
     // Calculate actual cash received (sum of declared cash)
     const actualResult = await client.query(
@@ -172,11 +212,11 @@ async function calculateSettlementSummary(client, settlementId) {
       [settlementId, currency]
     );
 
-    const actualCashReceived = parseFloat(actualResult.rows[0].actual_cash);
+    const actualCashReceived = roundMoney(actualResult.rows[0].actual_cash);
     const hasPending = parseInt(actualResult.rows[0].pending_count) > 0;
 
-    // Final Variance = Actual Cash Received - Expected Net Cash
-    const finalVariance = actualCashReceived - expectedNetCash;
+    // Final Variance = Actual Cash Received - Expected Net Cash (rounded to avoid float precision issues)
+    const finalVariance = roundMoney(actualCashReceived - expectedNetCash);
 
     // Determine variance status (use tolerance for floating point comparison)
     const VARIANCE_TOLERANCE = 0.01; // 1 cent tolerance
@@ -616,12 +656,12 @@ const updateAgentDeclaredCash = async (req, res) => {
 
       const oldValue = current.rows[0].declared_cash;
 
-      // Update entry (trigger will calculate variance)
+      // Update entry (trigger will calculate variance, rounded for precision)
       await client.query(
         `UPDATE settlement_agent_entries
          SET declared_cash = $1, notes = COALESCE($2, notes)
          WHERE id = $3`,
-        [declared_cash !== undefined ? parseFloat(declared_cash) : null, notes, agentEntryId]
+        [declared_cash !== undefined ? roundMoney(declared_cash) : null, notes, agentEntryId]
       );
 
       // Recalculate summary
@@ -675,7 +715,7 @@ const updateAgentDeclaredCash = async (req, res) => {
 const addExpense = async (req, res) => {
   try {
     const { id } = req.params;
-    const { expense_code_id, currency, amount, description } = req.body;
+    const { expense_code_id, currency, amount, description, point_of_sale } = req.body;
     const userId = req.user.id;
     const userRole = req.user.role;
 
@@ -745,13 +785,13 @@ const addExpense = async (req, res) => {
         });
       }
 
-      // Add expense
+      // Add expense (rounded for precision)
       const result = await client.query(
         `INSERT INTO settlement_expenses
-         (settlement_id, expense_code_id, currency, amount, description, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         (settlement_id, expense_code_id, currency, amount, description, point_of_sale, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [id, expense_code_id, currency, parseFloat(amount), description || null, userId]
+        [id, expense_code_id, currency, roundMoney(amount), description || null, point_of_sale || null, userId]
       );
 
       // Recalculate summary
@@ -1002,7 +1042,7 @@ const updateExpense = async (req, res) => {
 
       if (amount !== undefined) {
         updates.push(`amount = $${paramIndex++}`);
-        params.push(parseFloat(amount));
+        params.push(roundMoney(amount));
       }
 
       if (description !== undefined) {
@@ -1757,7 +1797,7 @@ const updateStationDeclaredCash = async (req, res) => {
         // Create a new summary record for this currency
         // For non-Juba stations with no sales in this currency, we still need to track cash sent
         // Set actual_cash_received = station_declared_cash since there are no agent entries
-        const cashAmount = parseFloat(station_declared_cash);
+        const cashAmount = roundMoney(station_declared_cash);
         await client.query(
           `INSERT INTO settlement_summaries
            (settlement_id, currency, opening_balance, expected_cash, total_expenses,
@@ -1770,12 +1810,12 @@ const updateStationDeclaredCash = async (req, res) => {
         oldValue = currentSummary.rows[0].station_declared_cash;
       }
 
-      // Update station_declared_cash (the trigger will calculate cash_match_status)
+      // Update station_declared_cash (the trigger will calculate cash_match_status, rounded for precision)
       await client.query(
         `UPDATE settlement_summaries
          SET station_declared_cash = $1, updated_at = CURRENT_TIMESTAMP
          WHERE settlement_id = $2 AND currency = $3`,
-        [parseFloat(station_declared_cash), id, currency]
+        [roundMoney(station_declared_cash), id, currency]
       );
 
       // For non-Juba stations (single agent entry with agent_id = NULL),
@@ -1785,7 +1825,7 @@ const updateStationDeclaredCash = async (req, res) => {
          SET declared_cash = $1, updated_at = CURRENT_TIMESTAMP
          WHERE settlement_id = $2 AND currency = $3 AND agent_id IS NULL
          RETURNING id`,
-        [parseFloat(station_declared_cash), id, currency]
+        [roundMoney(station_declared_cash), id, currency]
       );
 
       // If we updated an agent entry, recalculate the summary to update actual_cash_received
@@ -1801,7 +1841,7 @@ const updateStationDeclaredCash = async (req, res) => {
         'UPDATE_STATION_CASH',
         `station_declared_cash_${currency}`,
         { station_declared_cash: oldValue },
-        { station_declared_cash: parseFloat(station_declared_cash) },
+        { station_declared_cash: roundMoney(station_declared_cash) },
         `Updated station declared cash for ${currency}`,
         req.ip
       );
@@ -1834,10 +1874,140 @@ const updateStationDeclaredCash = async (req, res) => {
   }
 };
 
+// Create agent entry (for cases where entry is missing)
+const createAgentEntry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { agent_id, currency, declared_cash } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (!agent_id || !currency) {
+      return res.status(400).json({
+        success: false,
+        message: 'agent_id and currency are required'
+      });
+    }
+
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Verify settlement exists
+      const settlementCheck = await client.query(
+        'SELECT s.*, st.station_code FROM settlements s JOIN stations st ON s.station_id = st.id WHERE s.id = $1',
+        [id]
+      );
+
+      if (settlementCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Settlement not found'
+        });
+      }
+
+      const settlement = settlementCheck.rows[0];
+
+      // Only admin can create entries for non-DRAFT settlements
+      if (settlement.status !== 'DRAFT' && userRole !== 'admin') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          success: false,
+          message: 'Only administrators can modify non-DRAFT settlements'
+        });
+      }
+
+      // Check if entry already exists
+      const existingEntry = await client.query(
+        'SELECT id FROM settlement_agent_entries WHERE settlement_id = $1 AND agent_id = $2 AND currency = $3',
+        [id, agent_id, currency]
+      );
+
+      if (existingEntry.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Agent entry already exists',
+          data: { entry_id: existingEntry.rows[0].id }
+        });
+      }
+
+      // Calculate expected cash from sales for this agent/currency
+      const salesSum = await client.query(
+        `SELECT COALESCE(SUM(COALESCE(sales_amount, amount, 0) - COALESCE(cashout_amount, 0)), 0) as total
+         FROM station_sales
+         WHERE settlement_id = $1 AND agent_id = $2 AND currency = $3`,
+        [id, agent_id, currency]
+      );
+
+      const expectedCash = roundMoney(salesSum.rows[0].total);
+
+      // Create the entry (rounded for precision)
+      const result = await client.query(
+        `INSERT INTO settlement_agent_entries
+         (settlement_id, agent_id, currency, expected_cash, declared_cash)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [id, agent_id, currency, expectedCash, declared_cash !== undefined ? roundMoney(declared_cash) : null]
+      );
+
+      // Recalculate summary
+      await calculateSettlementSummary(client, id);
+
+      // Log action
+      await logSettlementAction(
+        client,
+        id,
+        userId,
+        'CREATE_AGENT_ENTRY',
+        null,
+        null,
+        { agent_id, currency, expected_cash: expectedCash, declared_cash },
+        'Agent entry created manually',
+        req.ip
+      );
+
+      await client.query('COMMIT');
+
+      // Get agent details
+      const agentDetails = await db.query(
+        'SELECT agent_code, agent_name FROM sales_agents WHERE id = $1',
+        [agent_id]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Agent entry created',
+        data: {
+          entry: {
+            ...result.rows[0],
+            agent_code: agentDetails.rows[0]?.agent_code,
+            agent_name: agentDetails.rows[0]?.agent_name
+          }
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Create agent entry error:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create agent entry'
+    });
+  }
+};
+
 module.exports = {
   getSettlements,
   getSettlementById,
   createSettlement,
+  createAgentEntry,
   updateAgentDeclaredCash,
   updateStationDeclaredCash,
   addExpense,

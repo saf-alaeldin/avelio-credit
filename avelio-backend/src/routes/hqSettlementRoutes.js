@@ -3,43 +3,34 @@ const router = express.Router();
 const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 const hqSettlementController = require('../controllers/hqSettlementController');
 
-// GET all HQ settlements
+// GET expense codes (for dropdown in add expense form)
+router.get('/expense-codes', requireAuth, hqSettlementController.getExpenseCodes);
+
+// GET or CREATE Station Summary by date (auto-creates if doesn't exist for admin/manager, view-only for auditor)
+router.get('/by-date', requireAuth, requireRole('admin', 'manager', 'auditor'), hqSettlementController.getOrCreateByDate);
+
+// GET all Station Summaries
 router.get('/', requireAuth, hqSettlementController.getHQSettlements);
 
-// GET single HQ settlement with full details
+// GET single Station Summary with full details
 router.get('/:id', requireAuth, hqSettlementController.getHQSettlementById);
 
-// GET available station settlements for a date range
-router.get('/:id/available-stations', requireAuth, hqSettlementController.getAvailableStationSettlements);
-
-// CREATE new HQ settlement
+// CREATE new Station Summary
 router.post('/', requireAuth, requireRole('admin', 'manager'), hqSettlementController.createHQSettlement);
 
-// ADD station settlement to HQ settlement
-router.post('/:id/stations', requireAuth, requireRole('admin', 'manager'), hqSettlementController.addStationSettlement);
-
-// REMOVE station settlement from HQ settlement
-router.delete('/:id/stations/:stationSettlementId', requireAuth, requireRole('admin', 'manager'), hqSettlementController.removeStationSettlement);
-
-// ADD expense to HQ settlement
+// ADD expense to Station Summary
 router.post('/:id/expenses', requireAuth, requireRole('admin', 'manager'), hqSettlementController.addHQExpense);
 
-// REMOVE expense from HQ settlement
+// REMOVE expense from Station Summary
 router.delete('/:id/expenses/:expenseId', requireAuth, requireRole('admin', 'manager'), hqSettlementController.removeHQExpense);
 
-// SUBMIT HQ settlement for review (DRAFT -> REVIEW)
-router.post('/:id/submit', requireAuth, requireRole('admin', 'manager'), hqSettlementController.submitHQSettlement);
+// RECALCULATE Station Summary (useful when station settlements are updated)
+router.post('/:id/recalculate', requireAuth, requireRole('admin', 'manager'), hqSettlementController.recalculateSummary);
 
-// APPROVE HQ settlement (REVIEW -> APPROVED) - admin only
-router.post('/:id/approve', requireAuth, requireRole('admin'), hqSettlementController.approveHQSettlement);
+// CLOSE Station Summary (DRAFT -> CLOSED)
+router.post('/:id/close', requireAuth, requireRole('admin', 'manager'), hqSettlementController.closeHQSettlement);
 
-// REJECT HQ settlement (REVIEW -> DRAFT) - admin only
-router.post('/:id/reject', requireAuth, requireRole('admin'), hqSettlementController.rejectHQSettlement);
-
-// CLOSE HQ settlement (APPROVED -> CLOSED) - admin only
-router.post('/:id/close', requireAuth, requireRole('admin'), hqSettlementController.closeHQSettlement);
-
-// DELETE HQ settlement (DRAFT only)
+// DELETE Station Summary (DRAFT only)
 router.delete('/:id', requireAuth, requireRole('admin', 'manager'), hqSettlementController.deleteHQSettlement);
 
 module.exports = router;

@@ -1,18 +1,10 @@
 // src/pages/TravelAgencies.js
 import React, { useEffect, useState, useRef } from 'react';
+import { getApiBaseUrl } from '../services/api';
 import './TravelAgencies.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+// Use centralized API URL detection
+const API_BASE = getApiBaseUrl();
 
 const authHeaders = () => {
   const token =
@@ -65,21 +57,27 @@ export default function TravelAgencies() {
   const [loadingReceipts, setLoadingReceipts] = useState(false);
   const [receiptsError, setReceiptsError] = useState('');
 
-  const load = async () => {
+  const load = async (isMounted = () => true) => {
     try {
       setLoading(true);
       setError('');
       const data = await apiGet('/agencies');
+      if (!isMounted()) return; // Prevent state update if unmounted
       const list = data?.data?.agencies || data?.agencies || [];
       setAgencies(Array.isArray(list) ? list : []);
     } catch (e) {
+      if (!isMounted()) return; // Prevent state update if unmounted
       setError(e.message || 'Failed to load agencies');
     } finally {
-      setLoading(false);
+      if (isMounted()) setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let mounted = true;
+    load(() => mounted);
+    return () => { mounted = false; }; // Cleanup on unmount
+  }, []);
 
   // Fetch receipts for a specific agency
   const fetchAgencyReceipts = async (agency) => {

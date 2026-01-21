@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReceiptDetailsModal from './ReceiptDetailsModal';
+import { getApiBaseUrl } from '../services/api';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -11,7 +12,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
+
   // Modal state
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -21,17 +22,8 @@ export default function Dashboard() {
     localStorage.getItem('authToken') ||
     sessionStorage.getItem('token');
 
-  // Auto-detect API URL based on window location
-  const getApiUrl = () => {
-    if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-    const hostname = window.location.hostname;
-    const port = 5001;
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return `http://${hostname}:${port}/api/v1`;
-    }
-    return 'http://localhost:5001/api/v1';
-  };
-  const API_BASE = getApiUrl();
+  // Use centralized API URL detection
+  const API_BASE = getApiBaseUrl();
 
   // Fetch stats from dedicated endpoint
   const fetchStats = async () => {

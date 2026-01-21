@@ -3,6 +3,9 @@ import './AdminPages.css';
 
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -185,7 +188,6 @@ export default function ExpenseCodesAdmin() {
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                   placeholder="e.g., FUEL-001"
-                  disabled={editingCode}
                 />
               </div>
               <div className="form-group">

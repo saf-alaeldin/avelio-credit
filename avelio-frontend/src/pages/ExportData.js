@@ -1,11 +1,14 @@
 // src/pages/ExportData.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ModernDatePicker from '../components/ModernDatePicker';
 import './ExportData.css';
 
 // Auto-detect API URL based on window location
 const getApiUrl = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
+  }
   const hostname = window.location.hostname;
   const port = 5001;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
@@ -27,6 +30,12 @@ export default function ExportData() {
   const [singleDate, setSingleDate] = useState(today);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
+
+  // Station Settlement Report state
+  const [stations, setStations] = useState([]);
+  const [selectedStation, setSelectedStation] = useState('');
+  const [stationStartDate, setStationStartDate] = useState(today);
+  const [stationEndDate, setStationEndDate] = useState(today);
 
   const token =
     localStorage.getItem('token') ||
@@ -57,6 +66,24 @@ export default function ExportData() {
     }
     return `${formatDateDisplay(startDate)} - ${formatDateDisplay(endDate)}`;
   };
+
+  // Fetch stations on mount
+  useEffect(() => {
+    const fetchStations = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/stations?active_only=true`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (data.success) {
+          setStations(data.data?.stations || data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch stations:', err);
+      }
+    };
+    fetchStations();
+  }, [token]);
 
   const handleDailySummaryPDF = async () => {
     try {
@@ -165,6 +192,49 @@ export default function ExportData() {
 
     } catch (e) {
       setError(e.message || 'Failed to generate Excel report');
+    } finally {
+      setLoading(false);
+      setLoadingType('');
+    }
+  };
+
+  const handleStationSettlementPDF = async () => {
+    if (!selectedStation) {
+      setError('Please select a station');
+      return;
+    }
+    try {
+      setLoading(true);
+      setLoadingType('station');
+      setError('');
+      setSuccess('');
+
+      const station = stations.find(s => s.id === selectedStation);
+      const stationName = station?.station_name || station?.station_code || 'station';
+      const url = `${API_BASE}/export/station-settlement?station_id=${selectedStation}&start_date=${stationStartDate}&end_date=${stationEndDate}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate Station Settlement report');
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `station-settlement-${stationName}-${stationStartDate}-to-${stationEndDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setSuccess(`Successfully downloaded ${stationName} Settlement Report`);
+
+    } catch (e) {
+      setError(e.message || 'Failed to generate Station Settlement report');
     } finally {
       setLoading(false);
       setLoadingType('');
@@ -319,6 +389,97 @@ export default function ExportData() {
                   </>
                 ) : (
                   <>Download Excel</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Station Settlement Report Section */}
+      <div className="export-card">
+        <div className="export-card-badge">Station Report</div>
+        <div className="export-section">
+          <h3 className="export-section-title">Station Settlement Report</h3>
+          <p className="export-section-desc">
+            Detailed settlement report for a specific station with agent breakdown (for Juba)
+          </p>
+
+          {/* Station Selection */}
+          <div className="station-select-section">
+            <div className="station-select-group">
+              <label className="date-label">Select Station:</label>
+              <select
+                className="station-select"
+                value={selectedStation}
+                onChange={(e) => setSelectedStation(e.target.value)}
+              >
+                <option value="">-- Select Station --</option>
+                {stations.map(station => (
+                  <option key={station.id} value={station.id}>
+                    {station.station_name} ({station.station_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Date Range for Station Report */}
+          <div className="date-picker-section">
+            <div className="date-picker-row">
+              <div className="date-picker-group">
+                <label className="date-label">From:</label>
+                <ModernDatePicker
+                  selected={stationStartDate}
+                  onChange={(date) => {
+                    setStationStartDate(date);
+                    if (date > stationEndDate) {
+                      setStationEndDate(date);
+                    }
+                  }}
+                  placeholder="Start date"
+                  maxDate={new Date()}
+                />
+              </div>
+              <div className="date-picker-group">
+                <label className="date-label">To:</label>
+                <ModernDatePicker
+                  selected={stationEndDate}
+                  onChange={setStationEndDate}
+                  placeholder="End date"
+                  minDate={stationStartDate ? new Date(stationStartDate) : null}
+                  maxDate={new Date()}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Export Button */}
+          <div className="export-buttons-grid">
+            <div className="export-button-card">
+              <div className="export-button-icon pdf-icon">PDF</div>
+              <div className="export-button-content">
+                <h4>Station Settlement</h4>
+                <p>Detailed settlement report for selected station</p>
+                <ul className="export-features">
+                  <li>Settlement summary by currency</li>
+                  <li>Sales breakdown</li>
+                  <li>Expenses detail</li>
+                  <li>Agent cash entries (Juba)</li>
+                </ul>
+              </div>
+              <button
+                className="export-btn export-btn--pdf"
+                onClick={handleStationSettlementPDF}
+                disabled={loading || !selectedStation}
+              >
+                {loading && loadingType === 'station' ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>Download PDF</>
                 )}
               </button>
             </div>
