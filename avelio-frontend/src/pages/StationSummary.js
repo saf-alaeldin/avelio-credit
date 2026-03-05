@@ -534,6 +534,13 @@ function StationSummary() {
             <span className="calc-note">({currentSummary.total_stations_count || 0} settlements)</span>
             <span className="calc-value">{formatCurrency(currentSummary.cash_from_stations, activeCurrency)}</span>
           </div>
+          {parseFloat(currentSummary.total_hq_income || 0) > 0 && (
+            <div className="calc-row add">
+              <span className="calc-label">+ HQ Income</span>
+              <span className="calc-note"></span>
+              <span className="calc-value">{formatCurrency(currentSummary.total_hq_income, activeCurrency)}</span>
+            </div>
+          )}
           <div className="calc-divider"></div>
           <div className="calc-row subtotal">
             <span className="calc-label">= Total Available</span>

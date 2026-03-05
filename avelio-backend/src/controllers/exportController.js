@@ -109,7 +109,7 @@ const exportToCSV = async (req, res) => {
     });
 
     // Set headers for CSV download
-    const filename = `receipts-export-${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `receipts-export-${new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' })}.csv`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
@@ -172,7 +172,7 @@ const exportSummaryCSV = async (req, res) => {
       csv += values.join(',') + '\n';
     });
 
-    const filename = `receipts-summary-${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `receipts-summary-${new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' })}.csv`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
@@ -216,7 +216,7 @@ const exportDailySummaryPDF = async (req, res) => {
     const { date } = req.query;
 
     // Default to today if no date provided
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
 
     // Fetch receipts for the specified date
     const query = `
@@ -381,7 +381,7 @@ const getCashClosingData = async (req, res) => {
       params.push(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]);
     } else {
       // Daily report
-      const targetDate = date || new Date().toISOString().split('T')[0];
+      const targetDate = date || new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
       dateCondition = 'r.issue_date = $1';
       params.push(targetDate);
     }

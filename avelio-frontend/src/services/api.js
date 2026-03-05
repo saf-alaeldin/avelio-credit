@@ -52,7 +52,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 120000, // 120 second timeout (increased for PDF generation and large queries)
   withCredentials: false // Set to true if using cookies
 });
 
@@ -65,8 +65,8 @@ const isTokenExpired = (token) => {
     const payload = JSON.parse(atob(token.split('.')[1]));
     const expirationTime = payload.exp * 1000; // Convert to milliseconds
     const currentTime = Date.now();
-    // Add 30 second buffer to handle clock skew
-    return currentTime >= (expirationTime - 30000);
+    // Add 10 second buffer to handle clock skew (30s was too aggressive, caused premature logouts)
+    return currentTime >= (expirationTime - 10000);
   } catch (error) {
     logger.error('Error checking token expiration:', error);
     return true;
@@ -127,6 +127,49 @@ api.interceptors.request.use(
 );
 
 // ========================================
+// RETRY LOGIC WITH EXPONENTIAL BACKOFF
+// ========================================
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000; // 1 second
+
+const shouldRetry = (error) => {
+  // Don't retry if no error info
+  if (!error) return false;
+  // Don't retry on client errors (4xx) - those won't change
+  if (error.response && error.response.status >= 400 && error.response.status < 500) return false;
+  // Don't retry on token expiration
+  if (error.message === 'TOKEN_EXPIRED') return false;
+  // Don't retry file upload/download (blob responses) - too expensive
+  if (error.config?.responseType === 'blob') return false;
+  // Retry on network errors (no response) or server errors (5xx)
+  if (!error.response || error.response.status >= 500) return true;
+  return false;
+};
+
+const retryDelay = (attempt) => {
+  // Exponential backoff with jitter: base * 2^attempt + random(0-500ms)
+  return BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+};
+
+const retryRequest = async (error) => {
+  const config = error.config;
+  if (!config) return Promise.reject(error);
+
+  config.__retryCount = config.__retryCount || 0;
+
+  if (config.__retryCount >= MAX_RETRIES || !shouldRetry(error)) {
+    return Promise.reject(error);
+  }
+
+  config.__retryCount += 1;
+  const delay = retryDelay(config.__retryCount - 1);
+  logger.debug(`Retrying request (${config.__retryCount}/${MAX_RETRIES}) in ${Math.round(delay)}ms: ${config.url}`);
+
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return api(config);
+};
+
+// ========================================
 // RESPONSE INTERCEPTOR - Handle errors globally
 // ========================================
 api.interceptors.response.use(
@@ -143,7 +186,7 @@ api.interceptors.response.use(
         case 401:
           // Unauthorized - token invalid or expired
           // Redirect immediately without showing error message
-          logger.error('🚫 Session expired - redirecting to login');
+          logger.error('Session expired - redirecting to login');
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           localStorage.setItem('sessionExpiredMessage', 'Your session has expired. Please log in again.');
@@ -154,34 +197,35 @@ api.interceptors.response.use(
 
         case 403:
           // Forbidden - user doesn't have permission
-          logger.error('🚫 Access forbidden');
+          logger.error('Access forbidden');
           break;
 
         case 404:
           // Not found
-          logger.error('🔍 Resource not found');
+          logger.error('Resource not found');
           break;
 
         case 500:
-          // Server error
-          logger.error('💥 Server error:', data?.message);
+          // Server error - may be retried
+          logger.error('Server error:', data?.message);
           break;
 
         default:
-          logger.error(`❌ Error ${status}:`, data?.message);
+          logger.error(`Error ${status}:`, data?.message);
       }
     } else if (error.request) {
       // Request was made but no response received
-      logger.error('📡 No response from server - check your connection');
+      logger.error('No response from server - check your connection');
     } else if (error.message === 'TOKEN_EXPIRED') {
       // Token expired - already handled in request interceptor
       return new Promise(() => {});
     } else {
       // Something else happened
-      logger.error('❌ Request error:', error.message);
+      logger.error('Request error:', error.message);
     }
-    
-    return Promise.reject(error);
+
+    // Attempt retry for eligible errors
+    return retryRequest(error);
   }
 );
 

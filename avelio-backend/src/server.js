@@ -17,10 +17,16 @@ const db = require('./config/db');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const app = express();
 const PORT = process.env.PORT || 5001;
+
+// Compress all responses (gzip/deflate)
+app.use(compression({
+  threshold: 1024, // Only compress responses larger than 1KB
+}));
 
 // Security headers with Helmet
 app.use(helmet({
@@ -68,7 +74,7 @@ app.use(cors({
       callback(null, true);
     } else {
       logger.warn(`CORS blocked origin: ${origin}`);
-      callback(null, true); // Allow anyway for development
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
     }
   },
   credentials: true,
@@ -114,11 +120,33 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Avelio API is running!',
-    timestamp: new Date().toISOString()
+app.get('/health', async (req, res) => {
+  let dbStatus = 'unknown';
+  let dbLatency = null;
+  try {
+    const start = Date.now();
+    await db.pool.query('SELECT 1');
+    dbLatency = Date.now() - start;
+    dbStatus = 'connected';
+  } catch (err) {
+    dbStatus = 'disconnected';
+    logger.error('Health check DB error:', { error: err.message });
+  }
+
+  const healthy = dbStatus === 'connected';
+  res.status(healthy ? 200 : 503).json({
+    success: healthy,
+    message: healthy ? 'Avelio API is running!' : 'Database connection failed',
+    timestamp: new Date().toISOString(),
+    database: {
+      status: dbStatus,
+      latency_ms: dbLatency,
+      pool: {
+        total: db.pool.totalCount,
+        idle: db.pool.idleCount,
+        waiting: db.pool.waitingCount
+      }
+    }
   });
 });
 
@@ -146,6 +174,7 @@ const expenseCodeRoutes = require('./routes/expenseCodeRoutes');
 const stationSalesRoutes = require('./routes/stationSalesRoutes');
 const settlementRoutes = require('./routes/settlementRoutes');
 const hqSettlementRoutes = require('./routes/hqSettlementRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 
 
@@ -166,6 +195,7 @@ app.use('/api/v1/expense-codes', expenseCodeRoutes);
 app.use('/api/v1/station-sales', stationSalesRoutes);
 app.use('/api/v1/settlements', settlementRoutes);
 app.use('/api/v1/hq-settlements', hqSettlementRoutes);
+app.use('/api/v1/reports', reportRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -7,10 +7,12 @@ const {
   getAllAgencies,
   createAgency,
   createAgenciesBulk,
+  getAgencyStats,
 } = require('../controllers/agencyController');
 
 // All agency routes require authentication
 router.get('/', authenticateToken, getAllAgencies);
+router.get('/:agency_id/stats', authenticateToken, getAgencyStats);
 router.post('/', authenticateToken, createAgency);
 router.post('/bulk', authenticateToken, createAgenciesBulk);
 

@@ -102,5 +102,21 @@ CREATE INDEX idx_receipts_number ON receipts(receipt_number);
 CREATE INDEX idx_agencies_id ON agencies(agency_id);
 CREATE INDEX idx_offline_queue_sync ON offline_queue(is_synced, created_at);
 
+-- CRITICAL PERFORMANCE INDEXES (Required for fast queries)
+-- These indexes are essential - do NOT remove them
+CREATE INDEX idx_receipts_is_void ON receipts(is_void);
+CREATE INDEX idx_receipts_void_date ON receipts(is_void, issue_date DESC);
+CREATE INDEX idx_receipts_void_created ON receipts(is_void, created_at DESC);
+CREATE INDEX idx_receipts_void_status ON receipts(is_void, status);
+CREATE INDEX idx_receipts_void_user ON receipts(is_void, user_id);
+CREATE INDEX idx_receipts_void_agency ON receipts(is_void, agency_id);
+
+-- Partial indexes for active receipts (very efficient)
+CREATE INDEX idx_receipts_active ON receipts(created_at DESC) WHERE is_void = false;
+CREATE INDEX idx_receipts_active_date ON receipts(issue_date DESC) WHERE is_void = false;
+
+-- Case-insensitive search index
+CREATE INDEX idx_receipts_number_lower ON receipts(LOWER(receipt_number));
+
 -- Success message
 SELECT 'Database schema created successfully!' AS message;

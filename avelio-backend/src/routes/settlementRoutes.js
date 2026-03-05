@@ -1,7 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 const settlementController = require('../controllers/settlementController');
+const salesImportController = require('../controllers/salesImportController');
+
+// Multer config for Excel file upload
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.includes('spreadsheet') || file.mimetype.includes('excel') ||
+        file.originalname.endsWith('.xlsx') || file.originalname.endsWith('.xls')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only Excel files are allowed'));
+    }
+  },
+});
+
+// Sales import from Excel (Till Statement) - must be before /:id routes
+router.post('/import/preview', requireAuth, upload.single('file'), salesImportController.previewSalesImport);
+router.post('/import/execute', requireAuth, upload.single('file'), salesImportController.executeSalesImport);
 
 // GET all settlements
 router.get('/', requireAuth, settlementController.getSettlements);
@@ -56,5 +76,8 @@ router.post('/:id/close', requireAuth, requireRole('admin'), settlementControlle
 
 // DELETE settlement - admin only
 router.delete('/:id', requireAuth, requireRole('admin'), settlementController.deleteSettlement);
+
+// DELETE agent entry
+router.delete('/:id/agents/:agentEntryId', requireAuth, settlementController.deleteAgentEntry);
 
 module.exports = router;

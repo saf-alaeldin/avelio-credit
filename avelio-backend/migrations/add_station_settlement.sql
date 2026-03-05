@@ -258,6 +258,7 @@ BEGIN
     WHERE station_id = NEW.station_id
       AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
       AND status NOT IN ('REJECTED')
+      AND (is_deleted = false OR is_deleted IS NULL)
       AND (
         (NEW.period_from, NEW.period_to) OVERLAPS (period_from, period_to)
       )

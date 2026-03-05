@@ -1,13 +1,35 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const receiptController = require('../controllers/receiptController');
+const importController = require('../controllers/importController');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { generateReceiptPDF } = require('../utils/pdfGenerator');
 const db = require('../config/db');
 const fs = require('fs');
 const path = require('path');
 
+// Multer config for Excel file uploads (in-memory, max 10MB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.originalname.endsWith('.xlsx')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .xlsx files are allowed'));
+    }
+  },
+});
+
 router.use(requireAuth);
+
+// POST /api/v1/receipts/import/preview - Preview Excel import
+router.post('/import/preview', upload.single('file'), importController.previewImport);
+
+// POST /api/v1/receipts/import/execute - Execute Excel import
+router.post('/import/execute', upload.single('file'), importController.executeImport);
 
 // POST /api/v1/receipts - Create new receipt
 router.post('/', receiptController.createReceipt);

@@ -1,30 +1,58 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import logger from './utils/logger';
 import { ToastProvider } from './contexts/ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// Always loaded (needed immediately)
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import NewReceipt from './pages/NewReceipt';
-import EditReceipt from './pages/EditReceipt';
-import ReceiptSuccess from './pages/ReceiptSuccess';
-import Account from './pages/Account';
-import Receipts from './pages/Receipts';
-import TravelAgencies from './pages/TravelAgencies';
-import ExportData from './pages/ExportData';
-import Analytics from './pages/Analytics';
-import Users from './pages/Users';
 import AppHeader from './pages/AppHeader';
 
-// Station Settlement pages
-import StationSettlementSimple from './pages/StationSettlementSimple';
-import SettlementsList from './pages/SettlementsList';
-import SettlementReview from './pages/SettlementReview';
-import ExpenseCodesAdmin from './pages/ExpenseCodesAdmin';
-import SalesAgentsAdmin from './pages/SalesAgentsAdmin';
-import StationsAdmin from './pages/StationsAdmin';
-import StationSummarySimple from './pages/StationSummarySimple';      
+// Lazy-loaded pages (loaded on demand when route is visited)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const NewReceipt = lazy(() => import('./pages/NewReceipt'));
+const EditReceipt = lazy(() => import('./pages/EditReceipt'));
+const ReceiptSuccess = lazy(() => import('./pages/ReceiptSuccess'));
+const Account = lazy(() => import('./pages/Account'));
+const Receipts = lazy(() => import('./pages/Receipts'));
+const TravelAgencies = lazy(() => import('./pages/TravelAgencies'));
+const ExportData = lazy(() => import('./pages/ExportData'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Users = lazy(() => import('./pages/Users'));
+
+// Station Settlement pages (lazy)
+const StationSettlementSimple = lazy(() => import('./pages/StationSettlementSimple'));
+const SettlementsList = lazy(() => import('./pages/SettlementsList'));
+const SettlementReview = lazy(() => import('./pages/SettlementReview'));
+const ExpenseCodesAdmin = lazy(() => import('./pages/ExpenseCodesAdmin'));
+const SalesAgentsAdmin = lazy(() => import('./pages/SalesAgentsAdmin'));
+const StationsAdmin = lazy(() => import('./pages/StationsAdmin'));
+const StationSummarySimple = lazy(() => import('./pages/StationSummarySimple'));
+const OperationsReport = lazy(() => import('./pages/OperationsReport'));
+
+// Loading fallback for lazy-loaded pages
+const PageLoader = () => (
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '60vh',
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  }}>
+    <div style={{ textAlign: 'center' }}>
+      <div style={{
+        width: '32px',
+        height: '32px',
+        border: '3px solid #f3f3f3',
+        borderTop: '3px solid #0ea5e9',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+        margin: '0 auto 16px'
+      }}></div>
+      <p style={{ color: '#94a3b8', fontSize: '14px' }}>Loading...</p>
+    </div>
+  </div>
+);
 
 function App() {
   // Use state for authentication to trigger re-renders
@@ -134,6 +162,7 @@ function App() {
       <ToastProvider>
         <Router>
           <AppHeader />
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route
               path="/login"
@@ -213,6 +242,11 @@ function App() {
               path="/station-summary"
               element={isAuthenticated ? <StationSummarySimple /> : <Navigate to="/login" replace />}
             />
+            {/* Operations Report Center */}
+            <Route
+              path="/operations-report"
+              element={isAuthenticated ? <OperationsReport /> : <Navigate to="/login" replace />}
+            />
             {/* Redirect old HQ Settlement routes */}
             <Route
               path="/hq-settlement"
@@ -227,6 +261,7 @@ function App() {
               element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
             />
           </Routes>
+          </Suspense>
         </Router>
       </ToastProvider>
     </ErrorBoundary>

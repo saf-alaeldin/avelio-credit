@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ModernDatePicker from '../components/ModernDatePicker';
 import FormattedCurrencyInput from '../components/FormattedCurrencyInput';
@@ -53,6 +53,13 @@ export default function StationSettlementSimple() {
   const [success, setSuccess] = useState('');
   const [autoSaveVisible, setAutoSaveVisible] = useState(false);
 
+  // Sales import state
+  const [importFile, setImportFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importResult, setImportResult] = useState(null);
+  const fileInputRef = useRef(null);
+
   // Setup state
   const [stationId, setStationId] = useState('');
   const [activeCurrency, setActiveCurrency] = useState('USD');
@@ -85,6 +92,7 @@ export default function StationSettlementSimple() {
   // Cash sent state - separated by currency
   const [cashSentByAgent, setCashSentByAgent] = useState({ USD: {}, SSP: {} });
   const [totalCashSent, setTotalCashSent] = useState({ USD: '', SSP: '' });
+  const [openingBalance, setOpeningBalance] = useState({ USD: 0, SSP: 0 });
   const [newCashSent, setNewCashSent] = useState({
     agent_id: '',
     amount: ''
@@ -95,6 +103,21 @@ export default function StationSettlementSimple() {
   const [settlement, setSettlement] = useState(null);
   const [agentEntries, setAgentEntries] = useState([]);
 
+  // Debounce timer refs (prevent state updates on unmounted component)
+  const cashUpdateTimerRef = useRef(null);
+  const totalCashTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(cashUpdateTimerRef.current);
+      clearTimeout(totalCashTimerRef.current);
+    };
+  }, []);
+
   // Derived state
   const selectedStation = useMemo(() =>
     stations.find(s => s.id === stationId),
@@ -102,7 +125,6 @@ export default function StationSettlementSimple() {
   );
   // Check both selectedStation and settlement for Juba (in case stations haven't loaded yet)
   const isJubaStation = selectedStation?.station_code === 'JUB' || settlement?.station_code === 'JUB';
-
   // Filter by currency
   const filteredSales = useMemo(() =>
     sales.filter(s => {
@@ -119,8 +141,11 @@ export default function StationSettlementSimple() {
     expenses.filter(e => {
       // Filter by currency
       if (e.currency !== activeCurrency) return false;
-      // For Juba station with POS selected, filter by POS
-      if (isJubaStation && selectedPOS && e.point_of_sale && e.point_of_sale !== selectedPOS) return false;
+      // For Juba station with POS selected, only show expenses that match the selected POS
+      if (isJubaStation && selectedPOS) {
+        // Expense must have matching POS (expenses without POS are hidden when POS is selected)
+        if (!e.point_of_sale || e.point_of_sale !== selectedPOS) return false;
+      }
       return true;
     }),
     [expenses, activeCurrency, isJubaStation, selectedPOS]
@@ -158,7 +183,12 @@ export default function StationSettlementSimple() {
     const totalCashout = filteredSales.reduce((sum, s) => sum + parseFloat(s.cashout_amount || 0), 0);
     const netSales = totalSales - totalCashout;
     const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-    const expectedCash = netSales - totalExpensesAmount;
+
+    // Get opening balance for current currency
+    const currentOpeningBalance = openingBalance[activeCurrency] || 0;
+
+    // Expected cash = Net Sales - Expenses + Opening Balance
+    const expectedCash = netSales - totalExpensesAmount + currentOpeningBalance;
 
     let cashSent = 0;
     if (isJubaStation) {
@@ -185,11 +215,12 @@ export default function StationSettlementSimple() {
       totalCashout,
       netSales,
       totalExpenses: totalExpensesAmount,
+      openingBalance: currentOpeningBalance,
       expectedCash,
       cashSent,
       difference
     };
-  }, [filteredSales, filteredExpenses, cashSentByAgent, totalCashSent, isJubaStation, activeCurrency, selectedPOS, agents]);
+  }, [filteredSales, filteredExpenses, cashSentByAgent, totalCashSent, isJubaStation, activeCurrency, selectedPOS, agents, openingBalance]);
 
   // Status helper
   const getStatus = useCallback((diff) => {
@@ -296,11 +327,14 @@ export default function StationSettlementSimple() {
       return;
     }
     try {
-      let url = `${API_BASE}/station-sales?station_id=${stationId}&pageSize=500`;
+      let url = `${API_BASE}/station-sales?station_id=${stationId}&pageSize=200`;
       if (settlementId) {
         url += `&settlement_id=${settlementId}`;
       } else {
         url += '&unsettled_only=true';
+        // Filter by selected date range so only matching sales appear
+        if (periodFrom) url += `&date_from=${periodFrom}`;
+        if (periodTo) url += `&date_to=${periodTo}`;
       }
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
@@ -312,7 +346,7 @@ export default function StationSettlementSimple() {
     } catch (err) {
       console.error('Failed to fetch sales:', err);
     }
-  }, [stationId, settlementId, token]);
+  }, [stationId, settlementId, periodFrom, periodTo, token]);
 
   // Fetch settlement data (edit mode)
   const fetchSettlement = useCallback(async () => {
@@ -343,14 +377,19 @@ export default function StationSettlementSimple() {
 
         // For non-Juba stations, get station declared cash from summaries - per currency
         const totalCash = { USD: '', SSP: '' };
+        const openingBal = { USD: 0, SSP: 0 };
         if (s.summaries && s.summaries.length > 0) {
           s.summaries.forEach(sum => {
             if (sum.station_declared_cash !== null && sum.currency) {
               totalCash[sum.currency] = sum.station_declared_cash.toString();
             }
+            if (sum.opening_balance !== null && sum.currency) {
+              openingBal[sum.currency] = parseFloat(sum.opening_balance) || 0;
+            }
           });
         }
         setTotalCashSent(totalCash);
+        setOpeningBalance(openingBal);
       }
     } catch (err) {
       console.error('Failed to fetch settlement:', err);
@@ -435,30 +474,36 @@ export default function StationSettlementSimple() {
   }, [fetchSales]);
 
   // Check for existing settlement when station and dates are selected (only in new mode)
+  // Only auto-open if EXACT same dates - not on overlap
   useEffect(() => {
     const checkExistingSettlement = async () => {
       if (isEditMode || !stationId || !periodFrom || !periodTo) return;
 
       try {
+        // Fetch settlements for this station
         const res = await fetch(
-          `${API_BASE}/settlements?station_id=${stationId}&date_from=${periodFrom}&date_to=${periodTo}&pageSize=1`,
+          `${API_BASE}/settlements?station_id=${stationId}&pageSize=100`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await res.json();
 
         if (data.success && data.data?.settlements?.length > 0) {
-          const existing = data.data.settlements[0];
-          // Check if the existing settlement overlaps with selected dates
-          const existingFrom = new Date(existing.period_from);
-          const existingTo = new Date(existing.period_to);
-          const selectedFrom = new Date(periodFrom);
-          const selectedTo = new Date(periodTo);
+          // Only auto-open if there's an EXACT match (same station, same from, same to)
+          const exactMatch = data.data.settlements.find(s => {
+            if (s.status === 'REJECTED') return false;
 
-          // Check for overlap
-          if (selectedFrom <= existingTo && selectedTo >= existingFrom) {
-            setSuccess(`Found existing settlement ${existing.settlement_number}. Loading...`);
-            // Use window.location for reliable navigation
-            window.location.href = `/station-settlement/${existing.id}`;
+            // Compare dates as strings (YYYY-MM-DD format)
+            const existingFrom = new Date(s.period_from).toISOString().split('T')[0];
+            const existingTo = new Date(s.period_to).toISOString().split('T')[0];
+
+            return existingFrom === periodFrom && existingTo === periodTo;
+          });
+
+          if (exactMatch) {
+            setSuccess(`Found existing settlement ${exactMatch.settlement_number}. Opening...`);
+            setTimeout(() => {
+              window.location.href = `/station-settlement/${exactMatch.id}`;
+            }, 500);
           }
         }
       } catch (err) {
@@ -466,7 +511,9 @@ export default function StationSettlementSimple() {
       }
     };
 
-    checkExistingSettlement();
+    // Debounce to avoid too many requests while user is selecting dates
+    const timer = setTimeout(checkExistingSettlement, 300);
+    return () => clearTimeout(timer);
   }, [stationId, periodFrom, periodTo, isEditMode, token]);
 
   // Add sale handler
@@ -703,6 +750,45 @@ export default function StationSettlementSimple() {
     }
   };
 
+  // Delete agent entry (cash sent) handler
+  const handleDeleteAgentEntry = async (entryId) => {
+    if (!window.confirm('Are you sure you want to delete this cash sent entry?')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/settlements/${settlementId}/agents/${entryId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to delete agent entry');
+      }
+
+      // Remove from local state
+      setAgentEntries(prev => prev.filter(e => e.id !== entryId));
+
+      // Also remove from cashSentByAgent state
+      const deletedEntry = agentEntries.find(e => e.id === entryId);
+      if (deletedEntry) {
+        setCashSentByAgent(prev => {
+          const newState = { ...prev };
+          if (newState[deletedEntry.currency]) {
+            delete newState[deletedEntry.currency][deletedEntry.agent_id];
+          }
+          return newState;
+        });
+      }
+
+      setSuccess('Cash entry deleted');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   // Update agent cash sent
   const handleAgentCashChange = async (agentId, value) => {
     // Update state for the specific currency
@@ -714,15 +800,22 @@ export default function StationSettlementSimple() {
       }
     }));
 
-    // If no settlement yet, just keep in state (will be saved when settlement is created)
+    // If no settlement yet, auto-create one so cash values persist
     if (!settlementId) {
+      const newId = await handleCreateSettlement();
+      if (!newId) {
+        showAutoSave();
+        return;
+      }
+      // Settlement created, cash values saved in handleCreateSettlement
       showAutoSave();
       return;
     }
 
     // Debounce API call
-    clearTimeout(window.cashUpdateTimer);
-    window.cashUpdateTimer = setTimeout(async () => {
+    clearTimeout(cashUpdateTimerRef.current);
+    cashUpdateTimerRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;
       try {
         // Find the agent entry to update
         let entry = agentEntries.find(e => e.agent_id === agentId && e.currency === activeCurrency);
@@ -1009,11 +1102,39 @@ export default function StationSettlementSimple() {
       [activeCurrency]: value
     }));
 
-    if (!settlementId) return;
+    // If no settlement yet, auto-create one so cash values persist
+    if (!settlementId) {
+      clearTimeout(totalCashTimerRef.current);
+      totalCashTimerRef.current = setTimeout(async () => {
+        if (!isMountedRef.current) return;
+        const newId = await handleCreateSettlement();
+        if (newId) {
+          // Now save the cash value to the newly created settlement
+          try {
+            await fetch(`${API_BASE}/settlements/${newId}/station-cash`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                currency: activeCurrency,
+                station_declared_cash: parseFloat(value) || 0
+              })
+            });
+            showAutoSave();
+          } catch (err) {
+            console.error('Failed to save station cash:', err);
+          }
+        }
+      }, 500);
+      return;
+    }
 
     // Debounce API call
-    clearTimeout(window.totalCashTimer);
-    window.totalCashTimer = setTimeout(async () => {
+    clearTimeout(totalCashTimerRef.current);
+    totalCashTimerRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;
       try {
         const res = await fetch(`${API_BASE}/settlements/${settlementId}/station-cash`, {
           method: 'PUT',
@@ -1078,6 +1199,16 @@ export default function StationSettlementSimple() {
 
       const data = await res.json();
       if (!res.ok) {
+        // Check if there's an EXACT match settlement - automatically open it
+        if (data.existingSettlement) {
+          const existing = data.existingSettlement;
+          setSuccess(`Opening existing settlement ${existing.settlement_number}...`);
+
+          // Automatically navigate to the existing settlement
+          window.location.href = `/station-settlement/${existing.id}`;
+          return null;
+        }
+        // For overlaps (no exact match), just show the error message
         throw new Error(data.message || 'Failed to create settlement');
       }
 
@@ -1137,8 +1268,65 @@ export default function StationSettlementSimple() {
     if (!settlementId) {
       await handleCreateSettlement();
     } else {
-      setSuccess('Draft saved');
-      setTimeout(() => setSuccess(''), 2000);
+      // Settlement already exists - save all pending cash values
+      try {
+        setSaving(true);
+
+        // Clear any pending debounce timers to prevent race conditions
+        clearTimeout(cashUpdateTimerRef.current);
+        clearTimeout(totalCashTimerRef.current);
+
+        // For Juba station: Save individual agent cash entries
+        if (isJubaStation) {
+          for (const entry of agentEntries) {
+            const cashValue = cashSentByAgent[entry.currency]?.[entry.agent_id];
+            if (cashValue !== undefined && parseFloat(cashValue) >= 0) {
+              try {
+                await fetch(`${API_BASE}/settlements/${settlementId}/agents/${entry.id}`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ declared_cash: parseFloat(cashValue) || 0 })
+                });
+              } catch (err) {
+                console.error('Failed to save agent cash:', err);
+              }
+            }
+          }
+        }
+
+        // For all stations: Save total cash sent for each currency
+        for (const currency of ['USD', 'SSP']) {
+          const cashValue = totalCashSent[currency];
+          if (cashValue !== undefined && parseFloat(cashValue) >= 0) {
+            try {
+              await fetch(`${API_BASE}/settlements/${settlementId}/station-cash`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  currency: currency,
+                  station_declared_cash: parseFloat(cashValue) || 0
+                })
+              });
+            } catch (err) {
+              console.error(`Failed to save ${currency} cash:`, err);
+            }
+          }
+        }
+
+        setSuccess('Draft saved');
+        setTimeout(() => setSuccess(''), 2000);
+      } catch (err) {
+        setError('Failed to save draft: ' + err.message);
+        setTimeout(() => setError(''), 3000);
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -1159,7 +1347,7 @@ export default function StationSettlementSimple() {
 
       // IMPORTANT: Clear any pending debounce timers and save cash values immediately
       // This prevents data loss when user types cash and clicks Submit before debounce completes
-      clearTimeout(window.totalCashTimer);
+      clearTimeout(totalCashTimerRef.current);
 
       // Save total cash sent for each currency that has a value
       for (const currency of ['USD', 'SSP']) {
@@ -1249,12 +1437,104 @@ export default function StationSettlementSimple() {
   const isDraft = !settlement || settlement.status === 'DRAFT';
   const canEdit = isDraft || isAdminOrManager; // Admin/Manager can always edit/delete
 
+  // Sales import handlers
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setImportFile(file);
+    setImportLoading(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_BASE}/settlements/import/preview`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (data.success) {
+        setImportPreview(data.data);
+      } else {
+        setError(data.message || 'Preview failed');
+      }
+    } catch (err) {
+      setError(`Import preview failed: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportExecute = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+
+      const res = await fetch(`${API_BASE}/settlements/import/execute`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (data.success) {
+        setImportPreview(null);
+        setImportFile(null);
+        setImportResult(data.data);
+        // Refresh the current settlement if in edit mode
+        if (settlementId) {
+          fetchSettlement();
+        }
+      } else {
+        setError(data.message || 'Import failed');
+      }
+    } catch (err) {
+      setError(`Import failed: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportClose = () => {
+    setImportPreview(null);
+    setImportFile(null);
+  };
+
+  const fmtImportAmt = (amount) => {
+    return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   return (
     <div className="settlement-simple">
       {/* Auto-save indicator */}
       <div className={`auto-save-indicator ${autoSaveVisible ? 'visible' : ''}`}>
         Saved
       </div>
+
+      {/* Hidden file input for import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        accept=".xlsx,.xls"
+        onChange={handleFileSelected}
+      />
 
       {/* Header */}
       <header className="simple-header">
@@ -1263,15 +1543,26 @@ export default function StationSettlementSimple() {
             <h1>Station Settlement</h1>
             <p>{settlement ? `${settlement.settlement_number}` : 'New Settlement'}</p>
           </div>
-          <button
-            className="simple-btn simple-btn-secondary"
-            onClick={handleRefresh}
-            disabled={loading}
-            title="Refresh data from server"
-            style={{ padding: '8px 16px', fontSize: '14px' }}
-          >
-            {loading ? '↻ Refreshing...' : '↻ Refresh'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {isAdminOrManager && (
+              <button
+                className="import-till-btn"
+                onClick={handleImportClick}
+                disabled={importLoading}
+              >
+                {importLoading ? 'Processing...' : 'Import Till Statement'}
+              </button>
+            )}
+            <button
+              className="simple-btn simple-btn-secondary"
+              onClick={handleRefresh}
+              disabled={loading}
+              title="Refresh data from server"
+              style={{ padding: '8px 16px', fontSize: '14px' }}
+            >
+              {loading ? '↻ Refreshing...' : '↻ Refresh'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1374,7 +1665,7 @@ export default function StationSettlementSimple() {
           </div>
         )}
 
-        {/* Inline Add Form */}
+        {/* Inline Add Sale Form */}
         {canEdit && (
           <div className="inline-form">
             {isJubaStation && (
@@ -1400,6 +1691,7 @@ export default function StationSettlementSimple() {
                 placeholder="0.00"
                 value={newSale.amount}
                 onChange={(value) => setNewSale(prev => ({ ...prev, amount: value }))}
+                currency={activeCurrency}
               />
             </div>
             <div className="form-field small">
@@ -1409,6 +1701,7 @@ export default function StationSettlementSimple() {
                 placeholder="0.00"
                 value={newSale.cashout}
                 onChange={(value) => setNewSale(prev => ({ ...prev, cashout: value }))}
+                currency={activeCurrency}
               />
             </div>
             <div className="form-field small">
@@ -1506,6 +1799,7 @@ export default function StationSettlementSimple() {
                 placeholder="0.00"
                 value={newCashSent.amount}
                 onChange={(value) => setNewCashSent(prev => ({ ...prev, amount: value }))}
+                currency={activeCurrency}
               />
             </div>
             <button className="simple-btn simple-btn-primary" onClick={handleAddCashSent}>
@@ -1518,29 +1812,97 @@ export default function StationSettlementSimple() {
           /* Per-agent cash inputs for Juba - shows ALL agents with sales */
           <div className="cash-by-agent">
             {agentsFromSales.length > 0 ? (
-              agentsFromSales.map(agent => (
-                <div key={agent.agent_id} className="agent-cash-row">
-                  <label>
-                    {agent.agent_name}
-                    <span style={{ color: '#64748b', fontWeight: 400, marginLeft: 8 }}>
-                      (Should have: {formatCurrency(agent.expected_cash)})
-                    </span>
-                  </label>
-                  <FormattedCurrencyInput
-                    className="simple-input large"
-                    placeholder="0.00"
-                    value={cashSentByAgent[activeCurrency]?.[agent.agent_id] ?? ''}
-                    onChange={(value) => handleAgentCashChange(agent.agent_id, value)}
-                    disabled={!canEdit}
-                    currency={activeCurrency}
-                    showWords={true}
-                    expectedValue={agent.expected_cash}
-                  />
-                </div>
-              ))
+              agentsFromSales.map(agent => {
+                const agentEntry = agentEntries.find(e => e.agent_id === agent.agent_id && e.currency === activeCurrency);
+                const hasDeclaredCash = agentEntry && parseFloat(agentEntry.declared_cash || 0) > 0;
+                return (
+                  <div key={agent.agent_id} className="agent-cash-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label>
+                        {agent.agent_name}
+                        <span style={{ color: '#64748b', fontWeight: 400, marginLeft: 8 }}>
+                          (Should have: {formatCurrency(agent.expected_cash)})
+                        </span>
+                      </label>
+                      <FormattedCurrencyInput
+                        className="simple-input large"
+                        placeholder="0.00"
+                        value={cashSentByAgent[activeCurrency]?.[agent.agent_id] ?? ''}
+                        onChange={(value) => handleAgentCashChange(agent.agent_id, value)}
+                        disabled={!canEdit}
+                        currency={activeCurrency}
+                        showWords={true}
+                        expectedValue={agent.expected_cash}
+                      />
+                    </div>
+                    {canEdit && hasDeclaredCash && agentEntry && (
+                      <button
+                        className="simple-btn simple-btn-danger simple-btn-small"
+                        onClick={() => handleDeleteAgentEntry(agentEntry.id)}
+                        title="Delete this cash entry"
+                        style={{ marginTop: '24px' }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             ) : (
               <div className="empty-state">
                 <p>Add sales first to enter cash amounts per agent.</p>
+              </div>
+            )}
+
+            {/* Show agent entries with declared cash but no sales (orphaned entries) - filtered by selected POS */}
+            {settlementId && agentEntries.filter(e =>
+              e.currency === activeCurrency &&
+              e.declared_cash !== null &&
+              parseFloat(e.declared_cash) > 0 &&
+              (!selectedPOS || e.point_of_sale === selectedPOS) && // Filter by selected POS
+              !agentsFromSales.some(a => a.agent_id === e.agent_id)
+            ).length > 0 && (
+              <div style={{ marginTop: '20px', padding: '16px', background: '#fef3c7', borderRadius: '8px' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#92400e' }}>Entries without matching sales:</h4>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Agent</th>
+                      <th className="text-right">Expected</th>
+                      <th className="text-right">Declared</th>
+                      <th className="text-right">Variance</th>
+                      {canEdit && <th></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentEntries.filter(e =>
+                      e.currency === activeCurrency &&
+                      e.declared_cash !== null &&
+                      parseFloat(e.declared_cash) > 0 &&
+                      (!selectedPOS || e.point_of_sale === selectedPOS) && // Filter by selected POS
+                      !agentsFromSales.some(a => a.agent_id === e.agent_id)
+                    ).map(entry => (
+                      <tr key={entry.id}>
+                        <td>{entry.agent_name || 'Unknown Agent'}</td>
+                        <td className="amount">{formatCurrency(entry.expected_cash)}</td>
+                        <td className="amount">{formatCurrency(entry.declared_cash)}</td>
+                        <td className={`amount ${parseFloat(entry.variance) > 0 ? 'extra' : parseFloat(entry.variance) < 0 ? 'short' : ''}`}>
+                          {formatCurrency(entry.variance)}
+                        </td>
+                        {canEdit && (
+                          <td>
+                            <button
+                              className="simple-btn simple-btn-danger simple-btn-small"
+                              onClick={() => handleDeleteAgentEntry(entry.id)}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1657,6 +2019,7 @@ export default function StationSettlementSimple() {
         )}
       </section>
 
+
       {/* Sticky Summary Footer */}
       <footer className="sticky-summary">
         <div className="sticky-summary-content">
@@ -1673,6 +2036,14 @@ export default function StationSettlementSimple() {
               <span className="label">Less Expenses</span>
               <span className="value">-{formatCurrency(totals.totalExpenses)}</span>
             </div>
+            {totals.openingBalance !== 0 && (
+              <div className="summary-item">
+                <span className="label">{totals.openingBalance >= 0 ? '+ Opening Bal' : '- Opening Bal'}</span>
+                <span className="value" style={{ color: totals.openingBalance >= 0 ? '#22c55e' : '#ef4444' }}>
+                  {totals.openingBalance >= 0 ? '+' : ''}{formatCurrency(totals.openingBalance)}
+                </span>
+              </div>
+            )}
             <div className="summary-divider"></div>
             <div className="summary-item highlight">
               <span className="label">Should Have</span>
@@ -1737,6 +2108,184 @@ export default function StationSettlementSimple() {
           </div>
         </div>
       </footer>
+
+      {/* Sales Import Preview Modal */}
+      {importPreview && (
+        <div className="import-overlay" onClick={handleImportClose}>
+          <div className="import-modal" onClick={e => e.stopPropagation()}>
+            <div className="import-modal-header">
+              <h2>Till Statement Import Preview</h2>
+              <button className="import-modal-close" onClick={handleImportClose}>&times;</button>
+            </div>
+
+            <div className="import-modal-body">
+              <div className="import-stats-row">
+                <div className="import-stat">
+                  <span className="import-stat-value">{importPreview.summary?.totalExcelRows || 0}</span>
+                  <span className="import-stat-label">Excel Rows</span>
+                </div>
+                <div className="import-stat">
+                  <span className="import-stat-value">{importPreview.summary?.salesGroups || 0}</span>
+                  <span className="import-stat-label">Sales Groups</span>
+                </div>
+                <div className="import-stat import-stat--success">
+                  <span className="import-stat-value">{importPreview.summary?.stationsAffected?.length || 0}</span>
+                  <span className="import-stat-label">Stations</span>
+                </div>
+                <div className="import-stat import-stat--warning">
+                  <span className="import-stat-value">{importPreview.summary?.blocked || 0}</span>
+                  <span className="import-stat-label">Blocked</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px', margin: '12px 0', fontSize: '14px', color: '#64748b' }}>
+                <span>Date: <strong style={{ color: '#1e293b' }}>{importPreview.detectedDate || '-'}</strong></span>
+                <span>File: <strong style={{ color: '#1e293b' }}>{importFile?.name}</strong></span>
+                <span>Skipped receipts: <strong>{importPreview.summary?.skippedReceipts || 0}</strong></span>
+              </div>
+
+              {importPreview.warnings?.length > 0 && (
+                <div className="import-warnings">
+                  <strong>Warnings ({importPreview.warnings.length}):</strong>
+                  <ul>
+                    {importPreview.warnings.slice(0, 5).map((w, i) => (
+                      <li key={i}>{w.message}</li>
+                    ))}
+                    {importPreview.warnings.length > 5 && (
+                      <li>...and {importPreview.warnings.length - 5} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '12px' }}>
+                <table className="simple-table" style={{ fontSize: '13px' }}>
+                  <thead>
+                    <tr>
+                      <th>Station</th>
+                      <th>Agent</th>
+                      <th>Currency</th>
+                      <th className="text-right">Sales</th>
+                      <th className="text-right">Cashout</th>
+                      <th className="text-right">Net</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(importPreview.salesGroups || []).map((g, i) => (
+                      <tr key={i} style={g.action === 'blocked' ? { opacity: 0.5, background: '#fff1f2' } : {}}>
+                        <td><span className="station-code">{g.stationCode}</span></td>
+                        <td>{g.agentName || 'Station Total'}</td>
+                        <td>{g.currency}</td>
+                        <td className="text-right amount">{fmtImportAmt(g.salesAmount)}</td>
+                        <td className="text-right amount" style={{ color: g.cashoutAmount > 0 ? '#ef4444' : undefined }}>{fmtImportAmt(g.cashoutAmount)}</td>
+                        <td className="text-right amount" style={{ fontWeight: 600 }}>{fmtImportAmt(g.netAmount)}</td>
+                        <td>
+                          <span className={`import-action-tag import-action-tag--${g.action}`}>
+                            {g.action === 'create_settlement' ? 'New DRAFT' :
+                             g.action === 'extend_draft' ? 'Extend DRAFT' :
+                             g.action === 'overwrite_in_draft' ? 'Overwrite' :
+                             g.action === 'blocked' ? 'Blocked' : g.action}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="import-modal-footer">
+              <button className="simple-btn simple-btn-secondary" onClick={handleImportClose}>
+                Cancel
+              </button>
+              <button
+                className="import-till-btn"
+                onClick={handleImportExecute}
+                disabled={importLoading || (importPreview.salesGroups || []).every(g => g.action === 'blocked')}
+              >
+                {importLoading ? 'Importing...' : `Import ${(importPreview.salesGroups || []).filter(g => g.action !== 'blocked').length} Sales Groups`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Result Modal */}
+      {importResult && (
+        <div className="import-overlay" onClick={() => setImportResult(null)}>
+          <div className="import-modal import-modal--result" onClick={e => e.stopPropagation()}>
+            <div className="import-modal-header" style={{ background: importResult.summary?.errors > 0 ? '#fef2f2' : '#f0fdf4' }}>
+              <h2>{importResult.summary?.errors > 0 ? 'Import Completed with Errors' : 'Import Successful'}</h2>
+              <button className="import-modal-close" onClick={() => setImportResult(null)}>&times;</button>
+            </div>
+
+            <div className="import-modal-body">
+              <div className="import-stats-row">
+                <div className="import-stat import-stat--success">
+                  <span className="import-stat-value">{importResult.summary?.salesCreated || 0}</span>
+                  <span className="import-stat-label">Sales Created</span>
+                </div>
+                <div className="import-stat">
+                  <span className="import-stat-value">{importResult.summary?.settlementsCreated || 0}</span>
+                  <span className="import-stat-label">New Settlements</span>
+                </div>
+                <div className="import-stat">
+                  <span className="import-stat-value">{importResult.summary?.settlementsExtended || 0}</span>
+                  <span className="import-stat-label">Extended</span>
+                </div>
+                <div className="import-stat import-stat--warning">
+                  <span className="import-stat-value">{importResult.summary?.blocked || 0}</span>
+                  <span className="import-stat-label">Blocked</span>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: '300px', overflowY: 'auto', marginTop: '16px' }}>
+                <table className="simple-table" style={{ fontSize: '13px' }}>
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Station</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(importResult.results || []).map((r, i) => (
+                      <tr key={i} style={r.action === 'blocked' ? { background: '#fff1f2' } : r.action === 'error' ? { background: '#fef2f2' } : {}}>
+                        <td>
+                          <span className={`import-action-tag import-action-tag--${r.action === 'sale_created' ? 'create_settlement' : r.action}`}>
+                            {r.action === 'sale_created' ? 'Sale' :
+                             r.action === 'create_settlement' ? 'New Settlement' :
+                             r.action === 'extend_draft' ? 'Extended' :
+                             r.action === 'overwrite_in_draft' ? 'Overwritten' :
+                             r.action === 'blocked' ? 'Blocked' :
+                             r.action === 'error' ? 'Error' : r.action}
+                          </span>
+                        </td>
+                        <td><span className="station-code">{r.stationCode}</span></td>
+                        <td style={{ fontSize: '12px', color: '#64748b' }}>
+                          {r.action === 'sale_created' && `${r.agent} | ${r.currency} ${fmtImportAmt(r.netAmount)}`}
+                          {r.action === 'create_settlement' && `New DRAFT for ${r.date}`}
+                          {r.action === 'extend_draft' && `${r.settlementNumber} -> ${r.newPeriod}`}
+                          {r.action === 'overwrite_in_draft' && `${r.settlementNumber} on ${r.date}`}
+                          {r.action === 'blocked' && r.reason}
+                          {r.action === 'error' && <span style={{ color: '#ef4444' }}>{r.reason}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="import-modal-footer">
+              <button className="import-till-btn" onClick={() => setImportResult(null)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -40,10 +40,12 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch recent receipts for display (last 20)
+  // Fetch today's receipts for display
   const fetchReceipts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/receipts?pageSize=20`, {
+      // Get today's date in Africa/Juba timezone
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+      const res = await fetch(`${API_BASE}/receipts?date_from=${today}&date_to=${today}&pageSize=20`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error('Failed to fetch receipts');
@@ -62,56 +64,20 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch ALL pending receipts to calculate accurate overdue count
-  const fetchPendingReceipts = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/receipts?status=PENDING&pageSize=1000`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Failed to fetch pending receipts');
-      const data = await res.json();
-      const list =
-        data?.receipts ??
-        data?.data?.receipts ??
-        data?.data?.rows ??
-        data?.rows ??
-        data?.list ??
-        [];
-      return Array.isArray(list) ? list : [];
-    } catch (err) {
-      console.error('Pending receipts fetch error:', err);
-      return [];
-    }
-  };
-
-  // Calculate overdue count from receipts (PENDING + >3 days from issue_date)
-  const calculateOverdue = (receiptsList) => {
-    return receiptsList.filter(r => {
-      if (r.status?.toUpperCase() !== 'PENDING') return false;
-      const issueDate = new Date(r.issue_date);
-      const daysDiff = Math.floor((Date.now() - issueDate) / (1000 * 60 * 60 * 24));
-      return daysDiff > 3;
-    }).length;
-  };
-
-  const [pendingReceipts, setPendingReceipts] = useState([]);
-
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         setError('');
 
-        // Fetch stats, receipts for display, and pending receipts for overdue count in parallel
-        const [statsData, receiptsList, pendingList] = await Promise.all([
+        // Fetch stats and today's receipts in parallel (overdue count comes from stats API)
+        const [statsData, receiptsList] = await Promise.all([
           fetchStats(),
-          fetchReceipts(),
-          fetchPendingReceipts()
+          fetchReceipts()
         ]);
 
         setStats(statsData);
         setReceipts(receiptsList);
-        setPendingReceipts(pendingList);
       } catch (err) {
         setError(err.message || 'Failed to load dashboard');
       } finally {
@@ -122,11 +88,11 @@ export default function Dashboard() {
     loadData();
   }, [API_BASE, token, refreshTrigger]);
 
-  // Calculate stats from stats API + overdue from ALL pending receipts
+  // Stats from the API (overdue count calculated server-side, no need for client-side fetch)
   const todayCount = stats?.today?.receipt_count || 0;
   const paidCount = stats?.paid?.count || 0;
   const pendingCount = stats?.pending?.count || 0;
-  const overdueCount = calculateOverdue(pendingReceipts);
+  const overdueCount = stats?.pending?.overdue_count || 0;
 
   // Navigation handlers with query params
   const handleStatClick = (filterType) => {
@@ -135,13 +101,13 @@ export default function Dashboard() {
         navigate('/receipts?date=today');
         break;
       case 'paid':
-        navigate('/receipts?status=PAID');
+        navigate('/receipts?status=PAID&date=today');
         break;
       case 'pending':
-        navigate('/receipts?status=PENDING');
+        navigate('/receipts?status=PENDING&date=today');
         break;
       case 'overdue':
-        navigate('/receipts?filter=overdue');
+        navigate('/receipts?filter=overdue&date=today');
         break;
       default:
         navigate('/receipts');
@@ -202,7 +168,7 @@ export default function Dashboard() {
               <div className="stat-icon">✅</div>
             </div>
             <div className="stat-value">{paidCount}</div>
-            <div className="stat-subtext">Receipts fully paid</div>
+            <div className="stat-subtext">Paid today</div>
           </div>
 
           <div 
@@ -215,7 +181,7 @@ export default function Dashboard() {
               <div className="stat-icon">⏳</div>
             </div>
             <div className="stat-value">{pendingCount}</div>
-            <div className="stat-subtext">Awaiting payment</div>
+            <div className="stat-subtext">Pending today</div>
           </div>
 
           <div 
@@ -228,13 +194,13 @@ export default function Dashboard() {
               <div className="stat-icon">⚠️</div>
             </div>
             <div className="stat-value">{overdueCount}</div>
-            <div className="stat-subtext">Pending over 3 days</div>
+            <div className="stat-subtext">Overdue today</div>
           </div>
         </div>
 
-        {/* === Latest Receipts === */}
+        {/* === Today's Receipts === */}
         <div className="section-header">
-          <h2 className="section-title">Latest Receipts</h2>
+          <h2 className="section-title">Today's Receipts</h2>
           <button
             className="action-btn"
             style={{ padding: '10px 18px' }}
@@ -279,6 +245,7 @@ export default function Dashboard() {
                         day: '2-digit',
                         month: 'short',
                         year: 'numeric',
+                        timeZone: 'Africa/Juba',
                       })}
                     </div>
                   </div>

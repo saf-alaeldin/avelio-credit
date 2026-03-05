@@ -48,6 +48,7 @@ export default function SettlementsList() {
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
   const [stationFilter, setStationFilter] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -81,6 +82,7 @@ export default function SettlementsList() {
       let url = `${API_BASE}/settlements?page=${page}&pageSize=${pageSize}`;
       if (statusFilter) url += `&status=${statusFilter}`;
       if (stationFilter) url += `&station_id=${stationFilter}`;
+      if (currencyFilter) url += `&currency=${currencyFilter}`;
       if (dateFrom) url += `&date_from=${dateFrom}`;
       if (dateTo) url += `&date_to=${dateTo}`;
 
@@ -99,7 +101,7 @@ export default function SettlementsList() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, statusFilter, stationFilter, dateFrom, dateTo]);
+  }, [token, page, statusFilter, stationFilter, currencyFilter, dateFrom, dateTo]);
 
   // Initial load
   useEffect(() => {
@@ -114,7 +116,7 @@ export default function SettlementsList() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, stationFilter, dateFrom, dateTo]);
+  }, [statusFilter, stationFilter, currencyFilter, dateFrom, dateTo]);
 
   // Format helpers
   const formatDate = (date) => {
@@ -122,7 +124,8 @@ export default function SettlementsList() {
     return new Date(date).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Africa/Juba'
     });
   };
 
@@ -168,9 +171,14 @@ export default function SettlementsList() {
     }
   };
 
-  // Get primary summary (USD preferred, then first available)
+  // Get primary summary (filtered currency, or USD preferred, then first available)
   const getPrimarySummary = (summaries) => {
     if (!summaries || summaries.length === 0) return null;
+    // If currency filter is active, show that currency
+    if (currencyFilter) {
+      return summaries.find(s => s.currency === currencyFilter) || null;
+    }
+    // Default: prefer USD, then first available
     return summaries.find(s => s.currency === 'USD') || summaries[0];
   };
 
@@ -219,6 +227,19 @@ export default function SettlementsList() {
           </div>
 
           <div className="setup-field">
+            <label className="simple-label">Currency</label>
+            <select
+              className="simple-select"
+              value={currencyFilter}
+              onChange={(e) => setCurrencyFilter(e.target.value)}
+            >
+              <option value="">All Currencies</option>
+              <option value="USD">USD</option>
+              <option value="SSP">SSP</option>
+            </select>
+          </div>
+
+          <div className="setup-field">
             <label className="simple-label">From Date</label>
             <input
               type="date"
@@ -245,6 +266,7 @@ export default function SettlementsList() {
               onClick={() => {
                 setStatusFilter('');
                 setStationFilter('');
+                setCurrencyFilter('');
                 setDateFrom('');
                 setDateTo('');
               }}
@@ -297,8 +319,8 @@ export default function SettlementsList() {
                   <th>Station</th>
                   <th>Period</th>
                   <th>Status</th>
-                  <th className="text-right">Expected</th>
-                  <th className="text-right">Cash Sent</th>
+                  <th className="text-right">Expected {currencyFilter && `(${currencyFilter})`}</th>
+                  <th className="text-right">Cash Sent {currencyFilter && `(${currencyFilter})`}</th>
                   <th className="text-right">Variance</th>
                   <th>Actions</th>
                 </tr>
@@ -439,6 +461,7 @@ export default function SettlementsList() {
           </div>
         </section>
       )}
+
     </div>
   );
 }

@@ -66,6 +66,9 @@ export default function AppHeader() {
           {(user.role === 'admin' || user.role === 'manager' || user.role === 'auditor') && (
             <NavLink to="/station-summary" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Summary</NavLink>
           )}
+          {user.role === 'admin' && (
+            <NavLink to="/operations-report" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Reports</NavLink>
+          )}
         </nav>
 
         {/* User menu */}
@@ -91,8 +94,10 @@ export default function AppHeader() {
               <Link className="dropdown-item" to="/account" onClick={() => setOpen(false)}>My Account</Link>
               <div className="dropdown-divider"></div>
               <div className="dropdown-section">Tools</div>
+              {/* Export and Analytics hidden temporarily
               <Link className="dropdown-item" to="/export" onClick={() => setOpen(false)}>Export</Link>
               <Link className="dropdown-item" to="/analytics" onClick={() => setOpen(false)}>Analytics</Link>
+              */}
               {user.role === 'admin' && (
                 <Link className="dropdown-item" to="/users" onClick={() => setOpen(false)}>Users</Link>
               )}

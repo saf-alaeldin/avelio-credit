@@ -37,12 +37,24 @@ export default function StationSummarySimple() {
   const [summary, setSummary] = useState(null);
   const [stationSettlements, setStationSettlements] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [income, setIncome] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [expenseCodes, setExpenseCodes] = useState([]);
 
   // New expense form (inline, no modal)
   const [newExpense, setNewExpense] = useState({
     expense_code_id: '',
+    amount: '',
+    description: ''
+  });
+
+  // Income type options
+  const incomeTypes = ['Commission Refund', 'US Dollar Purchase', 'Other'];
+
+  // New income form (inline, no modal)
+  const [newIncome, setNewIncome] = useState({
+    item_name: '',
+    custom_item_name: '',
     amount: '',
     description: ''
   });
@@ -91,6 +103,7 @@ export default function StationSummarySimple() {
         setSummary(s);
         setStationSettlements(s?.station_settlements || []);
         setExpenses(s?.expenses || []);
+        setIncome(s?.income || []);
         setSummaries(s?.summaries || []);
 
         if (data.is_new) {
@@ -130,6 +143,12 @@ export default function StationSummarySimple() {
     [expenses, activeCurrency]
   );
 
+  // Filter income by currency
+  const filteredIncome = useMemo(() =>
+    income.filter(i => i.currency === activeCurrency),
+    [income, activeCurrency]
+  );
+
   // Filter station settlements that have data for this currency
   const filteredStationSettlements = useMemo(() => {
     return stationSettlements.filter(ss => {
@@ -151,7 +170,8 @@ export default function StationSummarySimple() {
     return new Date(dateStr).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Africa/Juba'
     });
   };
 
@@ -237,6 +257,97 @@ export default function StationSummarySimple() {
     }
   };
 
+  // Add income handler
+  const handleAddIncome = async () => {
+    setError('');
+
+    if (!newIncome.item_name) {
+      setError('Please select an income type');
+      return;
+    }
+    const itemName = newIncome.item_name === 'Other'
+      ? newIncome.custom_item_name.trim()
+      : newIncome.item_name;
+
+    if (!itemName) {
+      setError('Please enter the income item name');
+      return;
+    }
+    if (!newIncome.amount || parseFloat(newIncome.amount) <= 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+
+    if (!summary?.id) {
+      setError('No summary loaded');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const res = await fetch(`${API_BASE}/hq-settlements/${summary.id}/income`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          item_name: itemName,
+          currency: activeCurrency,
+          amount: parseFloat(newIncome.amount),
+          description: newIncome.description
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to add income');
+      }
+
+      // Refresh to get updated totals
+      await fetchSummary();
+
+      // Reset form
+      setNewIncome({
+        item_name: '',
+        custom_item_name: '',
+        amount: '',
+        description: ''
+      });
+
+      setSuccess('Income added');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete income handler
+  const handleDeleteIncome = async (incomeId) => {
+    if (!window.confirm('Delete this income?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/hq-settlements/${summary.id}/income/${incomeId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete income');
+      }
+
+      // Refresh to get updated totals
+      await fetchSummary();
+
+      setSuccess('Income deleted');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   // Close summary handler
   const handleClose = async () => {
     if (!window.confirm('Close this summary? The safe amounts will be locked and used as opening balance for the next day.')) {
@@ -286,7 +397,8 @@ export default function StationSummarySimple() {
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: 'Africa/Juba'
   });
 
   return (
@@ -368,6 +480,13 @@ export default function StationSummarySimple() {
               <span className="note">({currentSummary.total_stations_count || 0} settlements)</span>
               <span className="amount">{formatCurrency(currentSummary.cash_from_stations)}</span>
             </div>
+            {parseFloat(currentSummary.total_hq_income || 0) > 0 && (
+              <div className="summary-row highlight-add">
+                <span className="label">+ HQ Income</span>
+                <span className="note"></span>
+                <span className="amount">+{formatCurrency(currentSummary.total_hq_income)}</span>
+              </div>
+            )}
             <div className="summary-divider"></div>
             <div className="summary-row subtotal">
               <span className="label">= Total Available</span>
@@ -434,6 +553,101 @@ export default function StationSummarySimple() {
               </tr>
             </tfoot>
           </table>
+        )}
+      </section>
+
+      {/* HQ Income Section */}
+      <section className="simple-section">
+        <h2 className="simple-section-header">
+          HQ Income ({activeCurrency})
+        </h2>
+
+        {/* Inline Add Form */}
+        {canEdit && (
+          <div className="inline-form">
+            <div className="form-field">
+              <label>Type</label>
+              <select
+                className="simple-select"
+                value={newIncome.item_name}
+                onChange={(e) => setNewIncome(prev => ({ ...prev, item_name: e.target.value, custom_item_name: '' }))}
+              >
+                <option value="">Select Type</option>
+                {incomeTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            {newIncome.item_name === 'Other' && (
+              <div className="form-field">
+                <label>Item Name</label>
+                <input
+                  type="text"
+                  className="simple-input"
+                  placeholder="Enter item name"
+                  value={newIncome.custom_item_name}
+                  onChange={(e) => setNewIncome(prev => ({ ...prev, custom_item_name: e.target.value }))}
+                />
+              </div>
+            )}
+            <div className="form-field small">
+              <label>Amount</label>
+              <FormattedCurrencyInput
+                className="simple-input"
+                placeholder="0.00"
+                value={newIncome.amount}
+                onChange={(val) => setNewIncome(prev => ({ ...prev, amount: val }))}
+                currency={activeCurrency}
+                showWords={true}
+              />
+            </div>
+            <div className="form-field">
+              <label>Note (optional)</label>
+              <input
+                type="text"
+                className="simple-input"
+                placeholder="Optional note"
+                value={newIncome.description}
+                onChange={(e) => setNewIncome(prev => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+            <button
+              className="simple-btn simple-btn-primary"
+              onClick={handleAddIncome}
+              disabled={saving}
+            >
+              + Add
+            </button>
+          </div>
+        )}
+
+        {/* Income List */}
+        {filteredIncome.length === 0 ? (
+          <div className="empty-state">
+            <p>No HQ income added yet.</p>
+          </div>
+        ) : (
+          <ul className="expenses-list">
+            {filteredIncome.map(item => (
+              <li key={item.id} className="expense-item">
+                <div className="expense-name">
+                  {item.item_name}
+                  {item.description && (
+                    <div className="expense-desc">{item.description}</div>
+                  )}
+                </div>
+                <span className="expense-amount" style={{color: '#16a34a'}}>+{formatCurrency(item.amount)}</span>
+                {canEdit && (
+                  <button
+                    className="simple-btn simple-btn-danger simple-btn-small"
+                    onClick={() => handleDeleteIncome(item.id)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
@@ -545,6 +759,11 @@ export default function StationSummarySimple() {
               <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'SSP')?.cash_from_stations || 0)}</td>
             </tr>
             <tr>
+              <td>+ HQ Income</td>
+              <td className="amount" style={{color: '#16a34a'}}>+{formatCurrency(summaries.find(s => s.currency === 'USD')?.total_hq_income || 0)}</td>
+              <td className="amount" style={{color: '#16a34a'}}>+{formatCurrency(summaries.find(s => s.currency === 'SSP')?.total_hq_income || 0)}</td>
+            </tr>
+            <tr>
               <td>= Total Available</td>
               <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'USD')?.total_available || 0)}</td>
               <td className="amount">{formatCurrency(summaries.find(s => s.currency === 'SSP')?.total_available || 0)}</td>
@@ -580,6 +799,12 @@ export default function StationSummarySimple() {
               <span className="label">+ Stations</span>
               <span className="value">{formatCurrency(currentSummary.cash_from_stations)}</span>
             </div>
+            {parseFloat(currentSummary.total_hq_income || 0) > 0 && (
+              <div className="summary-item">
+                <span className="label">+ Income</span>
+                <span className="value">+{formatCurrency(currentSummary.total_hq_income)}</span>
+              </div>
+            )}
             <div className="summary-item">
               <span className="label">- Expenses</span>
               <span className="value">-{formatCurrency(currentSummary.total_hq_expenses)}</span>

@@ -2,12 +2,17 @@ const db = require('../config/db');
 const AuditLogger = require('../utils/audit');
 const logger = require('../utils/logger');
 
+// Round money to 2 decimal places to avoid floating-point errors
+const roundMoney = (value) => {
+  return Math.round((parseFloat(value) || 0) * 100) / 100;
+};
+
 // Generate payment number (similar to receipt number but with PAY prefix)
 function generatePaymentNumber() {
   const now = new Date();
-  const year = String(now.getFullYear()).slice(-2);
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  const jubaDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+  const [yearFull, month, day] = jubaDateStr.split('-');
+  const year = yearFull.slice(-2);
   const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
 
   return `KU${year}${month}${day}-PAY-${random}`;
@@ -69,9 +74,9 @@ const createPartialPayment = async (req, res) => {
       }
 
       // Calculate remaining amount
-      const totalAmount = parseFloat(receipt.amount);
-      const amountPaid = parseFloat(receipt.amount_paid || 0);
-      const amountRemaining = totalAmount - amountPaid;
+      const totalAmount = roundMoney(receipt.amount);
+      const amountPaid = roundMoney(receipt.amount_paid);
+      const amountRemaining = roundMoney(totalAmount - amountPaid);
 
       // Check if payment amount exceeds remaining balance
       if (amount > amountRemaining) {
@@ -82,10 +87,16 @@ const createPartialPayment = async (req, res) => {
         });
       }
 
-      // Generate payment number
+      // Generate payment number and date/time in Africa/Juba timezone
       const paymentNumber = generatePaymentNumber();
-      const paymentDate = new Date().toISOString().split('T')[0];
-      const paymentTime = new Date().toTimeString().split(' ')[0];
+      const now = new Date();
+      const jubaDateTimeStr = now.toLocaleString('sv-SE', {
+        timeZone: 'Africa/Juba',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      });
+      const [paymentDate, paymentTime] = jubaDateTimeStr.split(' ');
 
       // Insert payment record
       const paymentResult = await client.query(
@@ -109,9 +120,9 @@ const createPartialPayment = async (req, res) => {
       const payment = paymentResult.rows[0];
 
       // Update receipt with new amounts
-      const newAmountPaid = amountPaid + parseFloat(amount);
-      const newAmountRemaining = totalAmount - newAmountPaid;
-      const newStatus = newAmountRemaining === 0 ? 'PAID' : receipt.status;
+      const newAmountPaid = roundMoney(amountPaid + roundMoney(amount));
+      const newAmountRemaining = roundMoney(totalAmount - newAmountPaid);
+      const newStatus = Math.abs(newAmountRemaining) < 0.01 ? 'PAID' : receipt.status;
 
       await client.query(
         `UPDATE receipts
@@ -160,7 +171,7 @@ const createPartialPayment = async (req, res) => {
 
       res.status(201).json({
         success: true,
-        message: newAmountRemaining === 0 ? 'Payment completed - receipt fully paid' : 'Partial payment recorded successfully',
+        message: Math.abs(newAmountRemaining) < 0.01 ? 'Payment completed - receipt fully paid' : 'Partial payment recorded successfully',
         data: {
           payment: {
             id: payment.id,
@@ -431,7 +442,7 @@ const generatePaymentPDF = async (req, res) => {
     doc.font('UI-Bold').fontSize(10).fillColor(TEXT).text(payment.payment_number, rightX, headerY + 26, { align: 'right', width: 140 });
 
     // Status badge - Orange for partial, Green if fully paid
-    const isFullyPaid = parseFloat(payment.amount_remaining) === 0;
+    const isFullyPaid = Math.abs(roundMoney(payment.amount_remaining)) < 0.01;
     const badgeText = isFullyPaid ? 'FULLY PAID' : 'PARTIAL';
     const badgeColor = isFullyPaid ? ACCENT : PRIMARY;
     const badgeW = 90, badgeH = 24;
@@ -542,8 +553,8 @@ const generatePaymentPDF = async (req, res) => {
 
     // Balance After Payment
     const balY = refBoxY + refBoxH + 10;
-    const remaining = parseFloat(payment.amount_remaining);
-    const balColor = remaining === 0 ? ACCENT : PRIMARY;
+    const remaining = roundMoney(payment.amount_remaining);
+    const balColor = Math.abs(remaining) < 0.01 ? ACCENT : PRIMARY;
 
     doc.fillOpacity(1);
     doc.fillColor(balColor).font('UI-Bold').fontSize(9)
@@ -558,7 +569,7 @@ const generatePaymentPDF = async (req, res) => {
     doc.font('UI-Bold').fontSize(9).fillColor(TEXT)
        .text(`Total Paid: $${parseFloat(payment.amount_paid).toFixed(2)}`, leftX + 12, balBoxY + 10);
     doc.font('UI-Bold').fontSize(13).fillColor(balColor)
-       .text(`Remaining: $${remaining.toFixed(2)}${remaining === 0 ? ' ✓ FULLY PAID' : ''}`,
+       .text(`Remaining: $${remaining.toFixed(2)}${Math.abs(remaining) < 0.01 ? ' ✓ FULLY PAID' : ''}`,
              leftX + 12, balBoxY + 24);
 
     // Footer - positioned relative to content to avoid page overflow
@@ -623,19 +634,19 @@ const voidPayment = async (req, res) => {
       const payment = paymentResult.rows[0];
 
       // Calculate new amounts after removing this payment
-      const paymentAmount = parseFloat(payment.amount);
-      const currentAmountPaid = parseFloat(payment.amount_paid);
-      const currentAmountRemaining = parseFloat(payment.amount_remaining);
-      const totalAmount = parseFloat(payment.total_amount);
+      const paymentAmount = roundMoney(payment.amount);
+      const currentAmountPaid = roundMoney(payment.amount_paid);
+      const currentAmountRemaining = roundMoney(payment.amount_remaining);
+      const totalAmount = roundMoney(payment.total_amount);
 
-      const newAmountPaid = currentAmountPaid - paymentAmount;
-      const newAmountRemaining = currentAmountRemaining + paymentAmount;
+      const newAmountPaid = roundMoney(currentAmountPaid - paymentAmount);
+      const newAmountRemaining = roundMoney(currentAmountRemaining + paymentAmount);
 
       // Determine new status
       let newStatus = payment.status;
-      if (newAmountPaid === 0) {
+      if (Math.abs(newAmountPaid) < 0.01) {
         newStatus = 'PENDING'; // If no payments left, return to PENDING
-      } else if (payment.status === 'PAID' && newAmountRemaining > 0) {
+      } else if (payment.status === 'PAID' && newAmountRemaining > 0.01) {
         newStatus = 'PENDING'; // If was fully paid but now has remaining, return to PENDING
       }
 

@@ -1380,3 +1380,238 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* ============================
+   IMPORT BUTTON (purple, matches Receipts page)
+   ============================ */
+
+.import-till-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.import-till-btn:hover {
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.import-till-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============================
+   IMPORT MODALS
+   ============================ */
+
+.import-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.import-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 900px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.import-modal--result {
+  max-width: 750px;
+}
+
+.import-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 12px 12px 0 0;
+}
+
+.import-modal-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.import-modal-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.import-modal-close:hover {
+  color: #1e293b;
+}
+
+.import-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.import-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+}
+
+/* Import Stats Row */
+.import-stats-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.import-stat {
+  flex: 1;
+  min-width: 100px;
+  text-align: center;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.import-stat--success {
+  background: #f0fdf4;
+}
+
+.import-stat--warning {
+  background: #fff7ed;
+}
+
+.import-stat-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.import-stat--success .import-stat-value {
+  color: #16a34a;
+}
+
+.import-stat--warning .import-stat-value {
+  color: #ea580c;
+}
+
+.import-stat-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Import Warnings */
+.import-warnings {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #9a3412;
+}
+
+.import-warnings strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.import-warnings ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.import-warnings li {
+  margin-bottom: 2px;
+}
+
+/* Import Action Tags */
+.import-action-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.import-action-tag--create_settlement {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.import-action-tag--extend_draft {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.import-action-tag--overwrite_in_draft {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.import-action-tag--blocked {
+  background: #fecaca;
+  color: #dc2626;
+}
+
+.import-action-tag--error {
+  background: #fecaca;
+  color: #dc2626;
+}
+
+.import-action-tag--sale_created {
+  background: #dbeafe;
+  color: #1d4ed8;
+}

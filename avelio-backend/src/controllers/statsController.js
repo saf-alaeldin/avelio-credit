@@ -5,44 +5,48 @@ const getDashboardSummary = async (req, res) => {
   try {
     const user = req.user; // From auth middleware
 
-    // Get today's date
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in Africa/Juba timezone
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
 
-    // Today's receipts
+    // Effective date expression: PAID receipts use payment_date, PENDING use issue_date
+    const effectiveDateExpr = `(CASE WHEN status = 'PAID' AND payment_date IS NOT NULL THEN payment_date::date ELSE issue_date END)`;
+
+    // Today's receipts (using effective date)
     const todayResult = await db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as count,
         COALESCE(SUM(amount), 0) as total,
         COUNT(CASE WHEN status = 'PAID' THEN 1 END) as paid_count,
         COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count
-       FROM receipts 
-       WHERE issue_date = $1 AND is_void = false`,
+       FROM receipts
+       WHERE ${effectiveDateExpr} = $1 AND is_void = false`,
       [today]
     );
 
-    // All PAID receipts total
+    // Today's PAID receipts (using effective date)
     const paidResult = await db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as count,
         COALESCE(SUM(amount), 0) as total
-       FROM receipts 
-       WHERE status = 'PAID' AND is_void = false`
+       FROM receipts
+       WHERE status = 'PAID' AND is_void = false AND ${effectiveDateExpr} = $1`,
+      [today]
     );
 
-    // All PENDING receipts total
+    // Today's PENDING receipts (using effective date)
     const pendingResult = await db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as count,
         COALESCE(SUM(amount), 0) as total,
         COUNT(CASE WHEN due_date < CURRENT_DATE THEN 1 END) as overdue_count
-       FROM receipts 
-       WHERE status = 'PENDING' AND is_void = false`
+       FROM receipts
+       WHERE status = 'PENDING' AND is_void = false AND ${effectiveDateExpr} = $1`,
+      [today]
     );
 
-    // This month's totals
-    const monthStart = new Date();
-    monthStart.setDate(1); // First day of current month
-    const monthStartStr = monthStart.toISOString().split('T')[0];
+    // This month's totals (use Africa/Juba timezone)
+    const jubaToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+    const monthStartStr = jubaToday.substring(0, 8) + '01';
 
     const monthResult = await db.query(
       `SELECT 
@@ -111,7 +115,7 @@ const getDashboardSummary = async (req, res) => {
 // GET TODAY'S STATS
 const getTodayStats = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
 
     const result = await db.query(
       `SELECT 

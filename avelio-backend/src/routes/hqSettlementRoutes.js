@@ -24,6 +24,12 @@ router.post('/:id/expenses', requireAuth, requireRole('admin', 'manager'), hqSet
 // REMOVE expense from Station Summary
 router.delete('/:id/expenses/:expenseId', requireAuth, requireRole('admin', 'manager'), hqSettlementController.removeHQExpense);
 
+// ADD income to Station Summary
+router.post('/:id/income', requireAuth, requireRole('admin', 'manager'), hqSettlementController.addHQIncome);
+
+// REMOVE income from Station Summary
+router.delete('/:id/income/:incomeId', requireAuth, requireRole('admin', 'manager'), hqSettlementController.removeHQIncome);
+
 // RECALCULATE Station Summary (useful when station settlements are updated)
 router.post('/:id/recalculate', requireAuth, requireRole('admin', 'manager'), hqSettlementController.recalculateSummary);
 

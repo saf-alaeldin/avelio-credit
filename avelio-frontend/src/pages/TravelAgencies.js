@@ -1,6 +1,7 @@
 // src/pages/TravelAgencies.js
 import React, { useEffect, useState, useRef } from 'react';
 import { getApiBaseUrl } from '../services/api';
+import cache, { CACHE_KEYS } from '../utils/cache';
 import './TravelAgencies.css';
 
 // Use centralized API URL detection
@@ -53,9 +54,13 @@ export default function TravelAgencies() {
 
   // Agency details modal state
   const [selectedAgency, setSelectedAgency] = useState(null);
+  const [agencyStats, setAgencyStats] = useState(null);
   const [agencyReceipts, setAgencyReceipts] = useState([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
   const [receiptsError, setReceiptsError] = useState('');
+  const [receiptsPage, setReceiptsPage] = useState(1);
+  const [totalReceipts, setTotalReceipts] = useState(0);
+  const RECEIPTS_PAGE_SIZE = 50;
 
   const load = async (isMounted = () => true) => {
     try {
@@ -79,16 +84,28 @@ export default function TravelAgencies() {
     return () => { mounted = false; }; // Cleanup on unmount
   }, []);
 
-  // Fetch receipts for a specific agency
-  const fetchAgencyReceipts = async (agency) => {
+  // Fetch stats for a specific agency (server-side aggregation)
+  const fetchAgencyStats = async (agency) => {
+    try {
+      const data = await apiGet(`/agencies/${agency.agency_id}/stats`);
+      setAgencyStats(data?.data || null);
+    } catch (e) {
+      console.error('Agency stats error:', e);
+      setAgencyStats(null);
+    }
+  };
+
+  // Fetch paginated receipts for a specific agency
+  const fetchAgencyReceipts = async (agency, page = 1) => {
     try {
       setLoadingReceipts(true);
       setReceiptsError('');
 
-      // Fetch receipts filtered by agency_id
-      const data = await apiGet(`/receipts?agency_id=${agency.agency_id}&pageSize=1000`);
+      const data = await apiGet(`/receipts?agency_id=${agency.agency_id}&pageSize=${RECEIPTS_PAGE_SIZE}&page=${page}`);
       const receipts = data?.data?.receipts || data?.receipts || [];
+      const total = data?.data?.total || data?.total || receipts.length;
       setAgencyReceipts(receipts);
+      setTotalReceipts(total);
     } catch (e) {
       setReceiptsError(e.message || 'Failed to load receipts');
       setAgencyReceipts([]);
@@ -100,14 +117,31 @@ export default function TravelAgencies() {
   // Open agency details modal
   const openAgencyDetails = async (agency) => {
     setSelectedAgency(agency);
-    await fetchAgencyReceipts(agency);
+    setReceiptsPage(1);
+    setAgencyStats(null);
+    // Fetch stats and first page of receipts in parallel
+    await Promise.all([
+      fetchAgencyStats(agency),
+      fetchAgencyReceipts(agency, 1)
+    ]);
+  };
+
+  // Handle page change in receipts table
+  const handleReceiptsPageChange = (newPage) => {
+    setReceiptsPage(newPage);
+    if (selectedAgency) {
+      fetchAgencyReceipts(selectedAgency, newPage);
+    }
   };
 
   // Close agency details modal
   const closeAgencyDetails = () => {
     setSelectedAgency(null);
+    setAgencyStats(null);
     setAgencyReceipts([]);
     setReceiptsError('');
+    setReceiptsPage(1);
+    setTotalReceipts(0);
   };
 
   // Filtered list
@@ -154,6 +188,7 @@ export default function TravelAgencies() {
         contact_email: contact_email.trim() || null,
         is_active: true,
       });
+      cache.delete(CACHE_KEYS.AGENCIES); // Invalidate so NewReceipt picks up the new agency
       setIsAddOpen(false);
       await load();
     } catch (err) {
@@ -311,6 +346,7 @@ export default function TravelAgencies() {
         }
       }
 
+      cache.delete(CACHE_KEYS.AGENCIES); // Invalidate so NewReceipt picks up imported agencies
       setImportResult({
         ok: true,
         message: `Imported ${success} item(s). ${failed ? failed + ' failed.' : ''}`,
@@ -544,54 +580,32 @@ export default function TravelAgencies() {
             <div className="agency-details-stats">
               <div className="agency-stat">
                 <div className="agency-stat-label">Total Receipts</div>
-                <div className="agency-stat-value">{agencyReceipts.length}</div>
+                <div className="agency-stat-value">{agencyStats?.total_receipts ?? '...'}</div>
               </div>
               <div className="agency-stat">
                 <div className="agency-stat-label">Pending Receipts</div>
                 <div className="agency-stat-value agency-stat-value--pending">
-                  {agencyReceipts.filter(r => r.status?.toUpperCase() === 'PENDING').length}
+                  {agencyStats?.pending_count ?? '...'}
                 </div>
               </div>
               <div className="agency-stat">
                 <div className="agency-stat-label">Pending Amount</div>
                 <div className="agency-stat-value agency-stat-value--pending">
-                  ${agencyReceipts
-                    .filter(r => r.status?.toUpperCase() === 'PENDING')
-                    .reduce((sum, r) => {
-                      // Use amount_remaining if available (for partial payments), otherwise full amount
-                      const remaining = r.amount_remaining !== undefined && r.amount_remaining !== null
-                        ? parseFloat(r.amount_remaining)
-                        : parseFloat(r.amount || 0);
-                      return sum + remaining;
-                    }, 0)
-                    .toFixed(2)}
+                  ${(agencyStats?.pending_amount ?? 0).toFixed(2)}
                 </div>
               </div>
               <div className="agency-stat">
                 <div className="agency-stat-label">Total Revenue</div>
                 <div className="agency-stat-value agency-stat-value--success">
-                  ${agencyReceipts
-                    .filter(r => r.status?.toUpperCase() !== 'VOID')
-                    .reduce((sum, r) => {
-                      // For PAID receipts, use full amount
-                      // For PENDING receipts, use amount_paid if available (partial payments)
-                      if (r.status?.toUpperCase() === 'PAID') {
-                        return sum + parseFloat(r.amount || 0);
-                      } else if (r.status?.toUpperCase() === 'PENDING') {
-                        const paid = r.amount_paid !== undefined && r.amount_paid !== null
-                          ? parseFloat(r.amount_paid)
-                          : 0;
-                        return sum + paid;
-                      }
-                      return sum;
-                    }, 0)
-                    .toFixed(2)}
+                  ${(agencyStats?.total_revenue ?? 0).toFixed(2)}
                 </div>
               </div>
             </div>
 
             <div className="agency-receipts-section">
-              <h4 style={{ margin: '0 0 16px', fontSize: '16px' }}>All Receipts</h4>
+              <h4 style={{ margin: '0 0 16px', fontSize: '16px' }}>
+                Receipts {totalReceipts > 0 ? `(${totalReceipts})` : ''}
+              </h4>
 
               {loadingReceipts ? (
                 <div style={{ padding: '40px', textAlign: 'center', opacity: 0.6 }}>
@@ -635,7 +649,8 @@ export default function TravelAgencies() {
                               {new Date(receipt.issue_date).toLocaleDateString('en-US', {
                                 year: 'numeric',
                                 month: 'short',
-                                day: 'numeric'
+                                day: 'numeric',
+                                timeZone: 'Africa/Juba'
                               })}
                             </td>
                             <td><strong>${totalAmount.toFixed(2)}</strong></td>
@@ -658,6 +673,31 @@ export default function TravelAgencies() {
                       })}
                     </tbody>
                   </table>
+
+                  {/* Pagination */}
+                  {totalReceipts > RECEIPTS_PAGE_SIZE && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '16px 0' }}>
+                      <button
+                        className="agencies-btn agencies-btn--ghost"
+                        disabled={receiptsPage <= 1 || loadingReceipts}
+                        onClick={() => handleReceiptsPageChange(receiptsPage - 1)}
+                        style={{ padding: '6px 14px', fontSize: '13px' }}
+                      >
+                        Previous
+                      </button>
+                      <span style={{ fontSize: '13px', opacity: 0.7 }}>
+                        Page {receiptsPage} of {Math.ceil(totalReceipts / RECEIPTS_PAGE_SIZE)}
+                      </span>
+                      <button
+                        className="agencies-btn agencies-btn--ghost"
+                        disabled={receiptsPage >= Math.ceil(totalReceipts / RECEIPTS_PAGE_SIZE) || loadingReceipts}
+                        onClick={() => handleReceiptsPageChange(receiptsPage + 1)}
+                        style={{ padding: '6px 14px', fontSize: '13px' }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

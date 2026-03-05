@@ -176,32 +176,15 @@ async function calculateSettlementSummary(client, settlementId) {
       [settlementId, currency]
     );
 
-    // Get opening balance (carry-forward from previous approved settlement)
-    const previousSettlement = await client.query(
-      `SELECT ss.final_variance, s.id as settlement_id
-       FROM settlement_summaries ss
-       JOIN settlements s ON ss.settlement_id = s.id
-       WHERE s.station_id = $1
-         AND s.status IN ('APPROVED', 'CLOSED')
-         AND s.period_to < $2
-         AND ss.currency = $3
-       ORDER BY s.period_to DESC
-       LIMIT 1`,
-      [station_id, period_from, currency]
-    );
-
-    const openingBalance = previousSettlement.rows.length > 0
-      ? roundMoney(previousSettlement.rows[0].final_variance)
-      : 0;
-    const openingBalanceSettlementId = previousSettlement.rows.length > 0
-      ? previousSettlement.rows[0].settlement_id
-      : null;
+    // Opening balance disabled - each settlement is independent
+    const openingBalance = 0;
+    const openingBalanceSettlementId = null;
 
     const expectedCash = roundMoney(expectedResult.rows[0].expected_cash);
     const totalExpenses = roundMoney(expensesResult.rows[0].total_expenses);
 
-    // Expected Net Cash = Expected Cash - Expenses + Opening Balance (rounded to avoid float precision issues)
-    const expectedNetCash = roundMoney(expectedCash - totalExpenses + openingBalance);
+    // Expected Net Cash = Expected Cash - Expenses (rounded to avoid float precision issues)
+    const expectedNetCash = roundMoney(expectedCash - totalExpenses);
 
     // Calculate actual cash received (sum of declared cash)
     const actualResult = await client.query(
@@ -281,7 +264,7 @@ async function calculateSettlementSummary(client, settlementId) {
 // GET all settlements
 const getSettlements = async (req, res) => {
   try {
-    const { station_id, status, date_from, date_to, page = 1, pageSize = 20 } = req.query;
+    const { station_id, status, currency, date_from, date_to, page = 1, pageSize = 20 } = req.query;
 
     let query = `
       SELECT s.*, st.station_code, st.station_name,
@@ -291,7 +274,7 @@ const getSettlements = async (req, res) => {
       JOIN stations st ON s.station_id = st.id
       LEFT JOIN users u1 ON s.created_by = u1.id
       LEFT JOIN users u2 ON s.reviewed_by = u2.id
-      WHERE 1=1
+      WHERE (s.is_deleted = false OR s.is_deleted IS NULL)
     `;
     const params = [];
     let paramIndex = 1;
@@ -304,6 +287,12 @@ const getSettlements = async (req, res) => {
     if (status) {
       query += ` AND s.status = $${paramIndex++}`;
       params.push(status);
+    }
+
+    // Currency filter - only show settlements that have summaries in this currency
+    if (currency) {
+      query += ` AND EXISTS (SELECT 1 FROM settlement_summaries ss WHERE ss.settlement_id = s.id AND ss.currency = $${paramIndex++})`;
+      params.push(currency);
     }
 
     if (date_from) {
@@ -1514,9 +1503,11 @@ const deleteSettlement = async (req, res) => {
 
       // Delete related records first (in case cascade doesn't work)
       await client.query('DELETE FROM settlement_audit_logs WHERE settlement_id = $1', [id]);
+      await client.query('DELETE FROM settlement_excess_baggage WHERE settlement_id = $1', [id]);
       await client.query('DELETE FROM settlement_agent_entries WHERE settlement_id = $1', [id]);
       await client.query('DELETE FROM settlement_expenses WHERE settlement_id = $1', [id]);
       await client.query('DELETE FROM settlement_summaries WHERE settlement_id = $1', [id]);
+      await client.query('DELETE FROM hq_settlement_stations WHERE station_settlement_id = $1', [id]);
 
       // Unlink sales from this settlement
       await client.query(
@@ -2003,6 +1994,104 @@ const createAgentEntry = async (req, res) => {
   }
 };
 
+
+// Delete agent entry
+const deleteAgentEntry = async (req, res) => {
+  try {
+    const { id, agentEntryId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Verify settlement exists
+      const settlementCheck = await client.query(
+        'SELECT status FROM settlements WHERE id = $1',
+        [id]
+      );
+
+      if (settlementCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Settlement not found'
+        });
+      }
+
+      const status = settlementCheck.rows[0].status;
+
+      // DRAFT can be edited by anyone, SUBMITTED only by admin/manager
+      if (status !== 'DRAFT' && !['admin', 'manager'].includes(userRole)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          success: false,
+          message: 'Only administrators or managers can edit submitted settlements'
+        });
+      }
+
+      // Get entry details for logging
+      const entry = await client.query(
+        `SELECT sae.*, sa.agent_name
+         FROM settlement_agent_entries sae
+         LEFT JOIN sales_agents sa ON sae.agent_id = sa.id
+         WHERE sae.id = $1 AND sae.settlement_id = $2`,
+        [agentEntryId, id]
+      );
+
+      if (entry.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'Agent entry not found'
+        });
+      }
+
+      // Delete the entry
+      await client.query(
+        'DELETE FROM settlement_agent_entries WHERE id = $1',
+        [agentEntryId]
+      );
+
+      // Recalculate summary
+      await calculateSettlementSummary(client, id);
+
+      // Log action
+      await logSettlementAction(
+        client,
+        id,
+        userId,
+        'DELETE_AGENT_ENTRY',
+        null,
+        { agent_name: entry.rows[0].agent_name, declared_cash: entry.rows[0].declared_cash },
+        null,
+        null,
+        req.ip
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Agent entry deleted successfully'
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Delete agent entry error:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete agent entry'
+    });
+  }
+};
+
 module.exports = {
   getSettlements,
   getSettlementById,
@@ -2021,5 +2110,6 @@ module.exports = {
   recalculateSettlement,
   getSettlementSummary,
   getSettlementAgents,
-  getSettlementExpenses
+  getSettlementExpenses,
+  deleteAgentEntry
 };

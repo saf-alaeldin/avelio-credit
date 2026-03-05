@@ -19,6 +19,7 @@ const getStationSales = async (req, res) => {
       station_id,
       agent_id,
       currency,
+      point_of_sale,
       date_from,
       date_to,
       settled,
@@ -55,6 +56,11 @@ const getStationSales = async (req, res) => {
     if (currency) {
       query += ` AND ss.currency = $${paramIndex++}`;
       params.push(currency);
+    }
+
+    if (point_of_sale) {
+      query += ` AND ss.point_of_sale = $${paramIndex++}`;
+      params.push(point_of_sale);
     }
 
     if (date_from) {
@@ -337,6 +343,23 @@ const createSale = async (req, res) => {
       }
     }
 
+    // Check for duplicate sale (same agent, date, currency, amount at same station)
+    if (agent_id) {
+      const dupeCheck = await db.query(
+        `SELECT id FROM station_sales
+         WHERE station_id = $1 AND agent_id = $2 AND transaction_date = $3
+           AND currency = $4 AND sales_amount = $5
+         LIMIT 1`,
+        [station_id, agent_id, transaction_date, currency, finalSalesAmount]
+      );
+      if (dupeCheck.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'A sale with the same agent, date, currency, and amount already exists'
+        });
+      }
+    }
+
     // Generate or validate sale reference
     const finalReference = sale_reference || generateSaleReference();
 
@@ -376,6 +399,58 @@ const createSale = async (req, res) => {
         settlement_id || null
       ]
     );
+
+    // If sale is linked to a settlement, update the agent entry's expected_cash
+    if (settlement_id && agent_id) {
+      await db.query(`
+        UPDATE settlement_agent_entries sae
+        SET expected_cash = COALESCE((
+          SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+          FROM station_sales ss
+          WHERE ss.settlement_id = sae.settlement_id
+            AND ss.agent_id = sae.agent_id
+            AND ss.currency = sae.currency
+        ), 0),
+        variance = declared_cash - COALESCE((
+          SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+          FROM station_sales ss
+          WHERE ss.settlement_id = sae.settlement_id
+            AND ss.agent_id = sae.agent_id
+            AND ss.currency = sae.currency
+        ), 0),
+        variance_status = CASE
+          WHEN declared_cash - COALESCE((
+            SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+            FROM station_sales ss
+            WHERE ss.settlement_id = sae.settlement_id
+              AND ss.agent_id = sae.agent_id
+              AND ss.currency = sae.currency
+          ), 0) = 0 THEN 'BALANCED'
+          WHEN declared_cash - COALESCE((
+            SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+            FROM station_sales ss
+            WHERE ss.settlement_id = sae.settlement_id
+              AND ss.agent_id = sae.agent_id
+              AND ss.currency = sae.currency
+          ), 0) > 0 THEN 'EXTRA'
+          ELSE 'SHORT'
+        END
+        WHERE sae.settlement_id = $1 AND sae.agent_id = $2 AND sae.currency = $3
+      `, [settlement_id, agent_id, currency]);
+
+      // Also update settlement summary expected_cash
+      await db.query(`
+        UPDATE settlement_summaries ss
+        SET expected_cash = COALESCE((
+          SELECT SUM(sae.expected_cash)
+          FROM settlement_agent_entries sae
+          WHERE sae.settlement_id = ss.settlement_id
+            AND sae.currency = ss.currency
+            AND (sae.is_deleted = false OR sae.is_deleted IS NULL)
+        ), 0)
+        WHERE ss.settlement_id = $1 AND ss.currency = $2
+      `, [settlement_id, currency]);
+    }
 
     // Get full sale details
     const sale = await db.query(
@@ -633,9 +708,9 @@ const deleteSale = async (req, res) => {
     const userRole = req.user?.role;
     const isAdmin = userRole === 'admin';
 
-    // Check if sale exists and get settlement status
+    // Check if sale exists and get settlement status + sale details for recalculation
     const existing = await db.query(
-      `SELECT ss.id, ss.settlement_id, s.status as settlement_status
+      `SELECT ss.id, ss.settlement_id, ss.agent_id, ss.currency, s.status as settlement_status
        FROM station_sales ss
        LEFT JOIN settlements s ON ss.settlement_id = s.id
        WHERE ss.id = $1`,
@@ -660,6 +735,58 @@ const deleteSale = async (req, res) => {
     }
 
     await db.query('DELETE FROM station_sales WHERE id = $1', [id]);
+
+    // If sale was linked to a settlement, recalculate the agent entry's expected_cash
+    if (sale.settlement_id && sale.agent_id) {
+      await db.query(`
+        UPDATE settlement_agent_entries sae
+        SET expected_cash = COALESCE((
+          SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+          FROM station_sales ss
+          WHERE ss.settlement_id = sae.settlement_id
+            AND ss.agent_id = sae.agent_id
+            AND ss.currency = sae.currency
+        ), 0),
+        variance = declared_cash - COALESCE((
+          SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+          FROM station_sales ss
+          WHERE ss.settlement_id = sae.settlement_id
+            AND ss.agent_id = sae.agent_id
+            AND ss.currency = sae.currency
+        ), 0),
+        variance_status = CASE
+          WHEN declared_cash - COALESCE((
+            SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+            FROM station_sales ss
+            WHERE ss.settlement_id = sae.settlement_id
+              AND ss.agent_id = sae.agent_id
+              AND ss.currency = sae.currency
+          ), 0) = 0 THEN 'BALANCED'
+          WHEN declared_cash - COALESCE((
+            SELECT SUM(ss.sales_amount - COALESCE(ss.cashout_amount, 0))
+            FROM station_sales ss
+            WHERE ss.settlement_id = sae.settlement_id
+              AND ss.agent_id = sae.agent_id
+              AND ss.currency = sae.currency
+          ), 0) > 0 THEN 'EXTRA'
+          ELSE 'SHORT'
+        END
+        WHERE sae.settlement_id = $1 AND sae.agent_id = $2 AND sae.currency = $3
+      `, [sale.settlement_id, sale.agent_id, sale.currency]);
+
+      // Also update settlement summary expected_cash
+      await db.query(`
+        UPDATE settlement_summaries ss
+        SET expected_cash = COALESCE((
+          SELECT SUM(sae.expected_cash)
+          FROM settlement_agent_entries sae
+          WHERE sae.settlement_id = ss.settlement_id
+            AND sae.currency = ss.currency
+            AND (sae.is_deleted = false OR sae.is_deleted IS NULL)
+        ), 0)
+        WHERE ss.settlement_id = $1 AND ss.currency = $2
+      `, [sale.settlement_id, sale.currency]);
+    }
 
     res.json({
       success: true,
