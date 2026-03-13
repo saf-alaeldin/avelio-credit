@@ -1,19 +1,7 @@
 import React, { useState } from 'react';
+import { getApiBaseUrl } from '../services/api';
 
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (window.location.protocol === 'https:') {
-    return '/api/v1';
-  }
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 export default function ImportCSVModal({ stationId, onClose, onSuccess }) {
   const [csvData, setCsvData] = useState('');

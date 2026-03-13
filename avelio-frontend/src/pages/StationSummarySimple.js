@@ -1,21 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getApiBaseUrl } from '../services/api';
 import ModernDatePicker from '../components/ModernDatePicker';
 import FormattedCurrencyInput from '../components/FormattedCurrencyInput';
 import './StationSettlementSimple.css'; // Reuse the same elderly-friendly styles
 
-// API URL helper
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 export default function StationSummarySimple() {
   const navigate = useNavigate();

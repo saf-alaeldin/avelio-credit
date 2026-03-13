@@ -1,21 +1,9 @@
 // src/components/ReceiptDetailsModal.js
 import React, { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../services/api';
 import './ReceiptDetailsModal.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (window.location.protocol === 'https:') {
-    return '/api/v1';
-  }
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatusUpdated }) {
   const [isUpdating, setIsUpdating] = useState(false);

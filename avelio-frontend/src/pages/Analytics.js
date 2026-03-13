@@ -6,6 +6,7 @@ import {
   CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement,
   Title, Tooltip, Legend, Filler, LineController, BarController, DoughnutController
 } from 'chart.js';
+import { getApiBaseUrl } from '../services/api';
 import './Analytics.css';
 
 ChartJS.register(
@@ -13,20 +14,7 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler, LineController, BarController, DoughnutController
 );
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (window.location.protocol === 'https:') {
-    return '/api/v1';
-  }
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 async function apiGet(path) {
   const token =

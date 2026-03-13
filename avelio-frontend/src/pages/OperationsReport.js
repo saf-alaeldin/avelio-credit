@@ -1,19 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { getApiBaseUrl } from '../services/api';
 import ModernDatePicker from '../components/ModernDatePicker';
 import './OperationsReport.css';
 
-// API URL helper
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 // Date preset helpers
 const getDatePreset = (preset) => {
@@ -489,6 +479,53 @@ export default function OperationsReport() {
                   <div className="safe-value">USD {formatCurrency(summary.safe_amount)}</div>
                 </div>
 
+                {/* Collections for selected date */}
+                {agenciesData?.collections && agenciesData.collections.count > 0 && (
+                  <div className="todays-collections-card" style={{
+                    background: 'linear-gradient(135deg, #0f766e 0%, #115e59 100%)',
+                    color: '#fff', borderRadius: '12px', padding: '18px 22px', marginTop: '16px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '15px' }}>
+                        Collections ({agenciesData.collections.date_from === agenciesData.collections.date_to
+                          ? formatDate(agenciesData.collections.date_from)
+                          : `${formatDate(agenciesData.collections.date_from)} - ${formatDate(agenciesData.collections.date_to)}`})
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: '22px' }}>USD {formatCurrency(agenciesData.collections.total)}</div>
+                    </div>
+                    <div style={{ fontSize: '12px', opacity: 0.85, marginBottom: '10px' }}>
+                      {agenciesData.collections.count} receipt{agenciesData.collections.count !== 1 ? 's' : ''} paid on this date (including late payments from earlier dates)
+                    </div>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+                            <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Receipt #</th>
+                            <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Agency</th>
+                            <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>Amount</th>
+                            <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Issued</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {agenciesData.collections.details.map((c, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                              <td style={{ padding: '4px 6px', fontWeight: 600 }}>{c.receipt_number}</td>
+                              <td style={{ padding: '4px 6px' }}>{c.agency_name}</td>
+                              <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>
+                                {formatCurrency(c.amount)}
+                                {c.issue_date < agenciesData.collections.date_from && (
+                                  <span style={{ marginLeft: '6px', fontSize: '9px', background: 'rgba(255,255,255,0.2)', padding: '1px 5px', borderRadius: '4px' }}>LATE</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '4px 6px', opacity: 0.8 }}>{c.issue_date}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {/* Toggle Details */}
                 <button
                   className="toggle-details-btn"
@@ -896,6 +933,43 @@ export default function OperationsReport() {
                 <span>Cash Paid Receipts: {summary.total_paid_cash.count}</span>
                 <span>Amount: USD {formatCurrency(summary.total_paid_cash.amount)}</span>
               </div>
+
+              {/* Collections for selected date */}
+              {agenciesData?.collections && agenciesData.collections.count > 0 && (
+                <div style={{ marginTop: '16px', border: '2px solid #0f766e', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '6px', color: '#0f766e' }}>
+                    Collections ({agenciesData.collections.date_from === agenciesData.collections.date_to
+                      ? agenciesData.collections.date_from
+                      : `${agenciesData.collections.date_from} - ${agenciesData.collections.date_to}`}) - USD {formatCurrency(agenciesData.collections.total)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>
+                    {agenciesData.collections.count} receipt{agenciesData.collections.count !== 1 ? 's' : ''} collected on this date
+                  </div>
+                  <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #ddd' }}>
+                        <th style={{ textAlign: 'left', padding: '3px 4px' }}>Receipt #</th>
+                        <th style={{ textAlign: 'left', padding: '3px 4px' }}>Agency</th>
+                        <th style={{ textAlign: 'right', padding: '3px 4px' }}>Amount</th>
+                        <th style={{ textAlign: 'left', padding: '3px 4px' }}>Issued</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agenciesData.collections.details.map((c, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '3px 4px', fontWeight: 600 }}>{c.receipt_number}</td>
+                          <td style={{ padding: '3px 4px' }}>{c.agency_name}</td>
+                          <td style={{ padding: '3px 4px', textAlign: 'right' }}>
+                            {formatCurrency(c.amount)}
+                            {c.issue_date < agenciesData.collections.date_from ? ' (LATE)' : ''}
+                          </td>
+                          <td style={{ padding: '3px 4px' }}>{c.issue_date}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
 
             {/* Print: Agencies Report - PAGE 2+: Details */}

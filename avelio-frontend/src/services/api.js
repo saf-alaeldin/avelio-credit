@@ -6,42 +6,26 @@ import cache, { CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 // SMART API URL DETECTION (Auto-detects based on window location)
 // ========================================
 export const getApiBaseUrl = () => {
-  // Debug logging
-  console.log('🔍 DEBUG - Detecting API URL...');
-  console.log('   window.location.hostname:', window.location.hostname);
-  console.log('   window.location.href:', window.location.href);
-  console.log('   window.location.protocol:', window.location.protocol);
-  console.log('   process.env.REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-
   // 1. First priority: Environment variable (if set)
   if (process.env.REACT_APP_API_URL) {
-    console.log('   ✅ Using env variable:', process.env.REACT_APP_API_URL);
     return process.env.REACT_APP_API_URL;
   }
 
-  // 2. If accessed via HTTPS (through Caddy proxy), use relative path
-  // Caddy will proxy /api/* requests to the backend
+  // 2. If accessed via HTTPS (through reverse proxy), use relative path
   if (window.location.protocol === 'https:') {
-    const apiUrl = '/api/v1';
-    console.log('   ✅ Using relative path (HTTPS via Caddy):', apiUrl);
-    return apiUrl;
+    return '/api/v1';
   }
 
   // 3. Auto-detect based on current window location (for local network access)
   const hostname = window.location.hostname;
-  const port = 5001; // Backend port
+  const port = 5001;
 
-  // If accessing via network IP, use that same IP for backend
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    const apiUrl = `http://${hostname}:${port}/api/v1`;
-    console.log('   ✅ Using network IP:', apiUrl);
-    return apiUrl;
+    return `http://${hostname}:${port}/api/v1`;
   }
 
   // 4. Default to localhost for local development
-  const apiUrl = `http://localhost:${port}/api/v1`;
-  console.log('   ✅ Using localhost:', apiUrl);
-  return apiUrl;
+  return `http://localhost:${port}/api/v1`;
 };
 
 // ========================================

@@ -13,6 +13,7 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+const path = require('path');
 const db = require('./config/db');
 const express = require('express');
 const cors = require('cors');
@@ -30,7 +31,15 @@ app.use(compression({
 
 // Security headers with Helmet
 app.use(helmet({
-  contentSecurityPolicy: {
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+    },
+  } : {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
@@ -197,13 +206,24 @@ app.use('/api/v1/settlements', settlementRoutes);
 app.use('/api/v1/hq-settlements', hqSettlementRoutes);
 app.use('/api/v1/reports', reportRoutes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
+// In production, serve the React frontend build
+if (process.env.NODE_ENV === 'production') {
+  const frontendBuild = path.join(__dirname, '..', '..', 'avelio-frontend', 'build');
+  app.use(express.static(frontendBuild));
+
+  // All non-API routes serve the React app (SPA client-side routing)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendBuild, 'index.html'));
   });
-});
+} else {
+  // 404 handler (development only - frontend runs separately)
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      message: 'Route not found'
+    });
+  });
+}
 
 // Error handler
 app.use((err, req, res, next) => {

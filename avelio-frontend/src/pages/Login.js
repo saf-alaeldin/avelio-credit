@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, AlertCircle, Clock } from 'lucide-react';
 import { handleLogin } from '../utils/auth';
+import { getApiBaseUrl } from '../services/api';
 import './Login.css';
 
 function Login() {
@@ -29,21 +30,7 @@ function Login() {
     try {
       console.log('🔐 Attempting login...');
 
-      // Auto-detect API URL based on window location
-      const getApiUrl = () => {
-        if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-        // If accessed via HTTPS (through Caddy proxy), use relative path
-        if (window.location.protocol === 'https:') {
-          return '/api/v1';
-        }
-        const hostname = window.location.hostname;
-        const port = 5001;
-        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-          return `http://${hostname}:${port}/api/v1`;
-        }
-        return `http://localhost:${port}/api/v1`;
-      };
-      const apiUrl = getApiUrl();
+      const apiUrl = getApiBaseUrl();
       console.log('📡 API URL:', apiUrl);
       console.log('📡 Hostname:', window.location.hostname);
 
