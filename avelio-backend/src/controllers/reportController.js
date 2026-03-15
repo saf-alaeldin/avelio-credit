@@ -330,12 +330,7 @@ const getAgenciesReport = async (req, res) => {
     const fromDate = date_from || today;
     const toDate = date_to || today;
 
-    // Get all non-void receipts that belong to this report period:
-    // 1. Receipts issued AND paid in this period (or paid on issue date)
-    // 2. Receipts issued in this period that are still PENDING/OVERDUE (not yet paid)
-    // 3. Receipts issued earlier but paid in this period (late payments)
-    // This ensures each receipt is counted exactly ONCE - on the day the money is received,
-    // or on the issue date if still pending.
+    // Monthly report: filter by issue_date so receipts stay in their issue month
     const receiptsQuery = `
       SELECT
         r.id, r.receipt_number, r.amount, r.currency, r.status, r.payment_method,
@@ -345,21 +340,67 @@ const getAgenciesReport = async (req, res) => {
       FROM receipts r
       INNER JOIN agencies a ON r.agency_id = a.id
       WHERE r.is_void = false
-        AND (
-          -- Receipts issued in period that are still pending/overdue (no payment yet)
-          (r.issue_date >= $1 AND r.issue_date <= $2 AND r.status IN ('PENDING', 'OVERDUE'))
-          -- Receipts issued in period and paid within the same period
-          OR (r.issue_date >= $1 AND r.issue_date <= $2 AND r.status = 'PAID' AND r.payment_date::date >= $1::date AND r.payment_date::date <= $2::date)
-          -- Receipts issued earlier but paid in this period (late payments)
-          OR (r.status = 'PAID' AND r.payment_date::date >= $1::date AND r.payment_date::date <= $2::date AND r.issue_date < $1)
-        )
+        AND r.issue_date >= $1
+        AND r.issue_date <= $2
       ORDER BY r.issue_date, r.receipt_number
     `;
 
     const receiptsResult = await db.query(receiptsQuery, [fromDate, toDate]);
     const receipts = receiptsResult.rows;
 
-    // Calculate summary totals
+    // Collections: fully paid receipts + partial payments within the date range, excluding EBB/external
+    const collectionsQuery = `
+      SELECT
+        r.id, r.receipt_number, r.amount AS receipt_amount, r.currency, r.status, r.payment_method,
+        r.issue_date, r.payment_date, r.is_external, r.station_code,
+        a.agency_id as agency_code, a.agency_name,
+        r.amount AS collected_amount, 'full' AS collection_type
+      FROM receipts r
+      INNER JOIN agencies a ON r.agency_id = a.id
+      WHERE r.is_void = false
+        AND r.status = 'PAID'
+        AND (r.is_external = false OR r.is_external IS NULL)
+        AND r.payment_date::date >= $1::date
+        AND r.payment_date::date <= $2::date
+        AND r.id NOT IN (SELECT receipt_id FROM payments)
+      UNION ALL
+      SELECT
+        r.id, r.receipt_number, r.amount AS receipt_amount, r.currency, r.status, r.payment_method,
+        r.issue_date, p.payment_date, r.is_external, r.station_code,
+        a.agency_id as agency_code, a.agency_name,
+        p.amount AS collected_amount, 'partial' AS collection_type
+      FROM payments p
+      INNER JOIN receipts r ON p.receipt_id = r.id
+      INNER JOIN agencies a ON r.agency_id = a.id
+      WHERE r.is_void = false
+        AND (r.is_external = false OR r.is_external IS NULL)
+        AND p.payment_date >= $1::date
+        AND p.payment_date <= $2::date
+      ORDER BY receipt_number
+    `;
+    const collectionsResult = await db.query(collectionsQuery, [fromDate, toDate]);
+    const todaysCollections = collectionsResult.rows;
+
+    let collectionsTotal = 0;
+    const collectionDetails = todaysCollections.map(r => {
+      const amount = roundMoney(parseFloat(r.collected_amount));
+      collectionsTotal += amount;
+      const paymentDateStr = r.payment_date ? String(r.payment_date).split(' ')[0].split('T')[0] : null;
+      return {
+        receipt_number: r.receipt_number,
+        agency_code: r.agency_code,
+        agency_name: r.agency_name,
+        amount,
+        currency: r.currency,
+        issue_date: r.issue_date,
+        payment_date: paymentDateStr,
+        is_external: r.is_external || false,
+        station_code: r.station_code,
+        collection_type: r.collection_type,
+      };
+    });
+
+    // Calculate summary totals for the period (by issue_date)
     let totalDeposited = 0;
     let totalDepositedCount = 0;
     let totalPending = 0;
@@ -377,8 +418,7 @@ const getAgenciesReport = async (req, res) => {
       const paymentMethod = (r.payment_method || '').toUpperCase();
       const isExternal = r.is_external || false;
       const isBankTransfer = paymentMethod.includes('BANK');
-
-      const paymentDateStr = r.payment_date ? new Date(r.payment_date).toISOString().split('T')[0] : null;
+      const paymentDateStr = r.payment_date ? String(r.payment_date).split(' ')[0].split('T')[0] : null;
 
       // Total deposited = ALL receipts in period
       totalDeposited += amount;
@@ -439,6 +479,13 @@ const getAgenciesReport = async (req, res) => {
           total_ebb: { amount: roundMoney(totalEBB), count: totalEBBCount },
           total_paid_cash: { amount: roundMoney(totalPaid), count: totalPaidCount },
           safe_amount: roundMoney(safeAmount),
+        },
+        collections: {
+          date_from: fromDate,
+          date_to: toDate,
+          total: roundMoney(collectionsTotal),
+          count: todaysCollections.length,
+          details: collectionDetails,
         },
         details,
       },

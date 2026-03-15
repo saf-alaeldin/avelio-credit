@@ -31,6 +31,9 @@ export default function StationSummarySimple() {
   const [summaries, setSummaries] = useState([]);
   const [expenseCodes, setExpenseCodes] = useState([]);
 
+  // Agencies deposit (previous day collections)
+  const [agenciesDeposit, setAgenciesDeposit] = useState(null);
+
   // New expense form (inline, no modal)
   const [newExpense, setNewExpense] = useState({
     expense_code_id: '',
@@ -114,12 +117,37 @@ export default function StationSummarySimple() {
     fetchExpenseCodes();
   }, [fetchExpenseCodes]);
 
+  // Fetch previous day's agency collections
+  const fetchAgenciesDeposit = useCallback(async () => {
+    if (!selectedDate) return;
+    try {
+      // Get previous day
+      const d = new Date(selectedDate + 'T00:00:00');
+      d.setDate(d.getDate() - 1);
+      const prevDate = d.toISOString().split('T')[0];
+
+      const res = await fetch(`${API_BASE}/reports/agencies?date_from=${prevDate}&date_to=${prevDate}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAgenciesDeposit({
+          date: prevDate,
+          collections: data.data.collections,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load agencies deposit:', err);
+    }
+  }, [selectedDate, token]);
+
   // Fetch when date changes
   useEffect(() => {
     if (selectedDate) {
       fetchSummary();
+      fetchAgenciesDeposit();
     }
-  }, [selectedDate, fetchSummary]);
+  }, [selectedDate, fetchSummary, fetchAgenciesDeposit]);
 
   // Get current summary for active currency
   const currentSummary = useMemo(() =>
@@ -395,8 +423,19 @@ export default function StationSummarySimple() {
     <div className="settlement-simple" data-print-date={printDate}>
       {/* Header */}
       <header className="simple-header">
-        <h1>Station Summary</h1>
-        <p>Daily cash from all stations - {formatDate(selectedDate)}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1>Station Summary</h1>
+            <p>Daily cash from all stations - {formatDate(selectedDate)}</p>
+          </div>
+          <button
+            className="simple-btn simple-btn-primary no-print"
+            onClick={() => window.print()}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Print
+          </button>
+        </div>
       </header>
 
       {/* Messages */}
@@ -495,6 +534,68 @@ export default function StationSummarySimple() {
               <span className="amount safe">{activeCurrency} {formatCurrency(currentSummary.safe_amount)}</span>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Agencies Deposit - Previous Day Collections */}
+      {agenciesDeposit && agenciesDeposit.collections && (
+        <section className="simple-section">
+          <h2 className="simple-section-header">
+            Agencies Deposit — {formatDate(agenciesDeposit.date)}
+          </h2>
+
+          {agenciesDeposit.collections.count === 0 ? (
+            <div className="empty-state">
+              <p>No agency collections on {formatDate(agenciesDeposit.date)}.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{
+                background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                color: 'white',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                marginBottom: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '13px', opacity: 0.9 }}>Total Collections</div>
+                  <div style={{ fontSize: '22px', fontWeight: 800 }}>USD {formatCurrency(agenciesDeposit.collections.total)}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700 }}>{agenciesDeposit.collections.count}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.85 }}>receipt{agenciesDeposit.collections.count !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>Receipt #</th>
+                    <th>Agency</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agenciesDeposit.collections.details.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>{item.receipt_number}</td>
+                      <td>{item.agency_name}</td>
+                      <td className="amount">{formatCurrency(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan="2"><strong>Total</strong></td>
+                    <td className="amount"><strong>USD {formatCurrency(agenciesDeposit.collections.total)}</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </>
+          )}
         </section>
       )}
 

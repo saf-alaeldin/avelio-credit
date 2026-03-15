@@ -1167,6 +1167,11 @@
     color: white !important;
   }
 
+  /* Hide elements marked no-print */
+  .no-print {
+    display: none !important;
+  }
+
   /* Status badge */
   .status-badge {
     padding: 4px 10px !important;

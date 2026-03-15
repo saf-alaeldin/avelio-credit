@@ -128,8 +128,8 @@ const createPartialPayment = async (req, res) => {
         `UPDATE receipts
          SET amount_paid = $1,
              amount_remaining = $2,
-             status = $3,
-             payment_date = CASE WHEN $3 = 'PAID' THEN $4 ELSE payment_date END,
+             status = $3::text,
+             payment_date = CASE WHEN $3::text = 'PAID' THEN $4 ELSE payment_date END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $5`,
         [newAmountPaid, newAmountRemaining, newStatus, paymentDate, receipt_id]

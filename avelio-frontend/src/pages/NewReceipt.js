@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Building2, 
-  DollarSign, 
-  CreditCard, 
+import {
+  Building2,
+  DollarSign,
+  CreditCard,
   Banknote,
   CheckCircle,
   Clock,
   FileText,
   AlertCircle,
-  Search
+  Search,
+  MapPin
 } from 'lucide-react';
-import { receiptsAPI, agenciesAPI, utils } from '../services/api';
+import { receiptsAPI, agenciesAPI, utils, getApiBaseUrl } from '../services/api';
 import './NewReceipt.css';
 
 function NewReceipt() {
@@ -25,6 +26,8 @@ function NewReceipt() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [stations, setStations] = useState([]);
+  const [selectedStation, setSelectedStation] = useState('');
   const amountInputRef = useRef(null);
 
   // Check authentication on mount
@@ -51,16 +54,13 @@ function NewReceipt() {
     }
   }, [selectedAgency]);
 
-  // Fetch agencies on mount
+  // Fetch agencies and stations on mount
   useEffect(() => {
     let isMounted = true;
-    
+
     const fetchAgencies = async () => {
       try {
-        console.log('🏢 Fetching agencies...');
         const res = await agenciesAPI.getAll();
-        
-        // Normalize different response structures
         const list =
           res?.data?.data?.agencies ??
           res?.data?.data?.rows ??
@@ -68,33 +68,41 @@ function NewReceipt() {
           res?.data?.rows ??
           res?.data ??
           [];
-        
+
         if (isMounted) {
-          const agencyArray = Array.isArray(list) ? list : [];
-          console.log('✅ Agencies loaded:', agencyArray.length);
-          setAgencies(agencyArray);
+          setAgencies(Array.isArray(list) ? list : []);
         }
       } catch (err) {
-        console.error('❌ Fetch agencies error:', err?.response?.data || err.message);
         if (isMounted) {
           if (err.response?.status === 401) {
             setError('Session expired. Please login again.');
-            setTimeout(() => {
-              localStorage.clear();
-              navigate('/login');
-            }, 2000);
+            setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
           } else {
             setError('Failed to load agencies. Please refresh the page.');
           }
         }
       }
     };
-    
-    fetchAgencies();
-    
-    return () => { 
-      isMounted = false; 
+
+    const fetchStations = async () => {
+      try {
+        const token = utils.getToken();
+        const res = await fetch(`${getApiBaseUrl()}/reports/stations`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && isMounted) {
+          setStations(data.data.stations);
+        }
+      } catch (err) {
+        console.error('Failed to load stations:', err);
+      }
     };
+
+    fetchAgencies();
+    fetchStations();
+
+    return () => { isMounted = false; };
   }, [navigate]);
 
   const handleAmountChange = (e) => {
@@ -166,7 +174,8 @@ function NewReceipt() {
         currency: 'USD',
         payment_method: paymentMethod,
         status: status,
-        remarks: ''
+        remarks: '',
+        ...(selectedStation && { station_code: selectedStation })
       });
 
       console.log('✅ Receipt created successfully:', response.data);
@@ -273,6 +282,27 @@ function NewReceipt() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Station Selector */}
+          <div className="form-group">
+            <label>
+              <MapPin size={18} />
+              Station
+            </label>
+            <select
+              value={selectedStation}
+              onChange={(e) => setSelectedStation(e.target.value)}
+              className="station-select"
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '16px' }}
+            >
+              <option value="">My Station (default)</option>
+              {stations.map(st => (
+                <option key={st.id} value={st.station_code}>
+                  {st.station_code} - {st.station_name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Amount Input */}

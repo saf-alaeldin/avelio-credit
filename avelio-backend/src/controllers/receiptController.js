@@ -33,7 +33,7 @@ async function generateReceiptNumber(stationCode) {
 // CREATE RECEIPT
 const createReceipt = async (req, res) => {
   try {
-    const { agency_id, amount, currency, payment_method, status, remarks, due_date } = req.body;
+    const { agency_id, amount, currency, payment_method, status, remarks, due_date, station_code: requestedStation } = req.body;
     const user = req.user; // From auth middleware
 
     // Debug logging
@@ -123,8 +123,9 @@ const createReceipt = async (req, res) => {
       }
     }
 
-    // Generate receipt number
-    const stationCode = user.station || user.station_code || 'JUB'; // Fallback to JUB
+    // Generate receipt number - use requested station or fall back to user's station
+    const stationCode = requestedStation || user.station || user.station_code || 'JUB';
+    const isExternal = stationCode !== (user.station || user.station_code || 'JUB');
     const receiptNumber = await generateReceiptNumber(stationCode);
 
     logger.debug('Generating receipt', {
@@ -156,10 +157,10 @@ const createReceipt = async (req, res) => {
 
     // Insert receipt
     const result = await db.query(
-      `INSERT INTO receipts 
-       (receipt_number, agency_id, user_id, amount, currency, payment_method, status, 
-        issue_date, issue_time, payment_date, due_date, station_code, issued_by_name, remarks, is_synced) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO receipts
+       (receipt_number, agency_id, user_id, amount, currency, payment_method, status,
+        issue_date, issue_time, payment_date, due_date, station_code, issued_by_name, remarks, is_synced, is_external)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         receiptNumber,
@@ -173,10 +174,11 @@ const createReceipt = async (req, res) => {
         issueTime,
         paymentDate,
         due_date,
-        stationCode, // Use the fallback station code
-        user.name || user.username || user.full_name || 'Staff', // Fallback for name
+        stationCode,
+        user.name || user.username || user.full_name || 'Staff',
         remarks,
-        true
+        true,
+        isExternal
       ]
     );
 
@@ -468,6 +470,7 @@ const updateReceiptStatus = async (req, res) => {
     const { id } = req.params;
     const { status, payment_date } = req.body;
     const userId = req.user.id;
+    const userName = req.user.name || req.user.username || 'Staff';
 
     if (!status) {
       return res.status(400).json({
@@ -478,7 +481,7 @@ const updateReceiptStatus = async (req, res) => {
 
     // Get current receipt data before update for audit trail and balance calculation
     const currentReceipt = await db.query(
-      'SELECT status, amount, agency_id FROM receipts WHERE id = $1',
+      'SELECT status, amount, amount_paid, agency_id FROM receipts WHERE id = $1',
       [id]
     );
 
@@ -491,11 +494,41 @@ const updateReceiptStatus = async (req, res) => {
 
     const oldStatus = currentReceipt.rows[0]?.status;
     const receiptAmount = roundMoney(currentReceipt.rows[0]?.amount);
+    const amountPaid = roundMoney(currentReceipt.rows[0]?.amount_paid || 0);
     const agencyId = currentReceipt.rows[0]?.agency_id;
     const userRole = req.user.role || 'staff';
 
+    const now = new Date();
+    const jubaDateTimeStr = now.toLocaleString('sv-SE', {
+      timeZone: 'Africa/Juba',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    });
+    const [jubaDate, jubaTime] = jubaDateTimeStr.split(' ');
+    const paidDate = payment_date || jubaDate;
+
+    // If marking as PAID and there's a remaining balance, auto-create a partial payment
+    if (status === 'PAID' && amountPaid > 0 && amountPaid < receiptAmount) {
+      const remainingAmount = roundMoney(receiptAmount - amountPaid);
+      const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      const [yearFull, month, day] = jubaDate.split('-');
+      const paymentNumber = `KU${yearFull.slice(-2)}${month}${day}-PAY-${random}`;
+
+      await db.query(
+        `INSERT INTO payments
+         (receipt_id, payment_number, amount, payment_date, payment_time, payment_method, remarks, created_by, created_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, paymentNumber, remainingAmount, paidDate, jubaTime, 'CASH', 'Auto-created: remaining balance on mark as paid', userId, userName]
+      );
+      logger.info('Auto-created partial payment for remaining balance', {
+        receipt_id: id,
+        amount: remainingAmount,
+        payment_number: paymentNumber
+      });
+    }
+
     // Authorization check: user must own the receipt, be admin, or be manager
-    const paidDate = payment_date || new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
     const result = await db.query(
       `UPDATE receipts
        SET status = $1::text, payment_date = $2,
@@ -534,7 +567,6 @@ const updateReceiptStatus = async (req, res) => {
           error: balanceError.message,
           agency_id: agencyId
         });
-        // Continue - status was updated successfully
       }
     }
 
