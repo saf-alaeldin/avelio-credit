@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../services/api';
 import ModernDatePicker from '../components/ModernDatePicker';
 import FormattedCurrencyInput from '../components/FormattedCurrencyInput';
@@ -8,8 +7,6 @@ import './StationSettlementSimple.css'; // Reuse the same elderly-friendly style
 const API_BASE = getApiBaseUrl();
 
 export default function StationSummarySimple() {
-  const navigate = useNavigate();
-
   // Token
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 

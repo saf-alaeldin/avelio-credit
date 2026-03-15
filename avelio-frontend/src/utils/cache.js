@@ -120,7 +120,7 @@ class Cache {
     let active = 0;
     let expired = 0;
 
-    for (const [key, item] of this.store.entries()) {
+    for (const [, item] of this.store.entries()) {
       if (now > item.expiresAt) {
         expired++;
       } else {

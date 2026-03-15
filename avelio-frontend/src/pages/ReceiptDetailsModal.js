@@ -224,21 +224,6 @@ export default function ReceiptDetailsModal({ receipt, isOpen, onClose, onStatus
     }
   };
 
-  // Handle Payment PDF Download
-  const handleDownloadPaymentPDF = async (paymentId) => {
-    try {
-      const res = await fetch(`${API_BASE}/payments/${paymentId}/pdf`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Failed to fetch payment PDF');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank');
-    } catch (err) {
-      setError('Error downloading payment PDF: ' + err.message);
-    }
-  };
-
   // Handle Void Payment
   const handleVoidPayment = async () => {
     if (!voidPaymentReason.trim()) {

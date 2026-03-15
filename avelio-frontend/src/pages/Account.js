@@ -22,12 +22,6 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
   const changePassword = async (e) => {
     e.preventDefault();
     setMsg(null);

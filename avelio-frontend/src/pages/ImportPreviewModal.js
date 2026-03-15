@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, AlertTriangle, PlusCircle, Globe, XCircle, FileSpreadsheet } from 'lucide-react';
+import { AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 const styles = {
   overlay: {
@@ -157,7 +157,7 @@ export default function ImportPreviewModal({ isOpen, data, loading, fileName, on
 
   if (!isOpen || !data) return null;
 
-  const { summary, matched, newReceipts, ebbDeposits, warnings, errors } = data;
+  const { summary, matched, newReceipts, ebbDeposits, errors } = data;
   const hasData = (matched?.length || 0) + (newReceipts?.length || 0) + (ebbDeposits?.length || 0) > 0;
 
   const tabs = [
@@ -450,7 +450,7 @@ export default function ImportPreviewModal({ isOpen, data, loading, fileName, on
                         <td style={styles.td}>{item.rowIndex}</td>
                         <td style={styles.td}>{item.customer} ({item.customerId})</td>
                         <td style={styles.td}>{item.amount} {item.currency}</td>
-                        <td style={styles.td} style={{ ...styles.td, color: '#dc2626', fontSize: '12px' }}>{item.message}</td>
+                        <td style={{ ...styles.td, color: '#dc2626', fontSize: '12px' }}>{item.message}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -13,7 +13,7 @@ import {
   Save
 } from 'lucide-react';
 import { receiptsAPI } from '../services/api';
-import { Skeleton, SkeletonReceipt } from '../components/Skeleton';
+import { SkeletonReceipt } from '../components/Skeleton';
 import './NewReceipt.css';
 
 function EditReceipt() {

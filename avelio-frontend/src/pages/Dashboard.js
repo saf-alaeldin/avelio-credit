@@ -86,6 +86,7 @@ export default function Dashboard() {
     };
 
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [API_BASE, token, refreshTrigger]);
 
   // Stats from the API (overdue count calculated server-side, no need for client-side fetch)

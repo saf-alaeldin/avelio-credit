@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import './AppHeader.css';
 import { handleLogout } from '../utils/auth';
-import logger from '../utils/logger';
 
 export default function AppHeader() {
   const location = useLocation();

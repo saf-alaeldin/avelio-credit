@@ -171,6 +171,7 @@ export default function Receipts() {
 
   useEffect(() => {
     fetchReceipts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, statusFilter, dateFrom, dateTo, overdueFilter, searchQuery, refreshTrigger]);
 
   const pages = Math.max(1, Math.ceil((total || 0) / pageSize));

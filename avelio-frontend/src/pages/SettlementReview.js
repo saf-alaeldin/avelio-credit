@@ -48,11 +48,7 @@ export default function SettlementReview() {
     }
   };
   const userRole = getUserRole();
-  const isAdmin = userRole === 'admin';
-  const isManager = userRole === 'manager';
   const isAuditor = userRole === 'auditor';
-  const isAdminOrManager = isAdmin || isManager;
-
   // Fetch settlement details
   const fetchSettlement = useCallback(async () => {
     try {

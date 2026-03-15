@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Lock, User, AlertCircle, Clock } from 'lucide-react';
 import { handleLogin } from '../utils/auth';
 import { getApiBaseUrl } from '../services/api';
 import './Login.css';
 
 function Login() {
-  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
