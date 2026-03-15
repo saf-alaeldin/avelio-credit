@@ -247,6 +247,7 @@ export default function OperationsReport() {
     const styles = {
       paid: { bg: '#ecfdf5', color: '#047857', label: 'PAID' },
       pending: { bg: '#fffbeb', color: '#92400e', label: 'PENDING' },
+      partial: { bg: '#fef3c7', color: '#b45309', label: 'PARTIAL' },
       bank_transfer: { bg: '#f0f9ff', color: '#0369a1', label: 'BANK' },
       ebb: { bg: '#eef2ff', color: '#4f46e5', label: 'EBB' },
     };
@@ -493,10 +494,10 @@ export default function OperationsReport() {
                       </div>
                       <div style={{ fontWeight: 800, fontSize: '22px' }}>USD {formatCurrency(agenciesData.collections.total)}</div>
                     </div>
-                    <div style={{ fontSize: '12px', opacity: 0.85, marginBottom: '10px' }}>
+                    <div className="no-print" style={{ fontSize: '12px', opacity: 0.85, marginBottom: '10px' }}>
                       {agenciesData.collections.count} receipt{agenciesData.collections.count !== 1 ? 's' : ''} paid on this date (including late payments from earlier dates)
                     </div>
-                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    <div className="no-print" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
@@ -534,57 +535,41 @@ export default function OperationsReport() {
                   {showAgencyDetails ? 'Hide Details' : 'Show Details'} ({agenciesData?.details?.length || 0} receipts)
                 </button>
 
-                {/* Details Table */}
-                {showAgencyDetails && agenciesData?.details?.length > 0 && (
-                  <table className="report-table" style={{ marginTop: '16px' }}>
+                {/* Details Table - always rendered, hidden via CSS when collapsed so print can show it */}
+                {agenciesData?.details?.length > 0 && (
+                  <table className={`report-table agencies-detail-table${showAgencyDetails ? '' : ' screen-hidden'}`} style={{ marginTop: '16px' }}>
                     <thead>
                       <tr>
-                        <th>Receipt #</th>
+                        <th style={{ width: '30px' }}>#</th>
+                        <th>Receipt</th>
                         <th>Agency</th>
                         <th className="text-right">Amount</th>
-                        <th>Currency</th>
-                        <th>Status</th>
                         <th>Category</th>
-                        <th>Deposited</th>
-                        <th>Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {agenciesData.details.map((r, idx) => (
                         <tr key={idx}>
-                          <td style={{ fontWeight: 600 }}>{r.receipt_number}</td>
-                          <td>{r.agency_name}</td>
-                          <td className="amount">{formatCurrency(r.amount)}</td>
-                          <td>{r.currency}</td>
-                          <td>
-                            <span style={{
-                              display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
-                              fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                              background: r.status === 'PAID' ? '#ecfdf5' : '#fffbeb',
-                              color: r.status === 'PAID' ? '#047857' : '#92400e',
-                            }}>{r.status}</span>
-                          </td>
-                          <td>{categoryBadge(r.category)}</td>
-                          <td>
-                            {r.is_deposited && (
-                              <span style={{
-                                display: 'inline-block', padding: '2px 7px', borderRadius: '6px',
-                                fontSize: '10px', fontWeight: 700,
-                                background: '#d1fae5', color: '#065f46', border: '1px solid #a7f3d0',
-                              }}>YES</span>
+                          <td style={{ color: '#94a3b8', fontSize: '11px' }}>{idx + 1}</td>
+                          <td style={{ fontWeight: 600, fontSize: '12px' }}>{r.receipt_number}</td>
+                          <td style={{ fontSize: '12px' }}>{r.agency_name}</td>
+                          <td className="amount" style={{ fontSize: '12px' }}>
+                            {formatCurrency(r.amount)}
+                            {r.category === 'partial' && (
+                              <div style={{ fontSize: '9px', color: '#6b7280' }}>
+                                Paid: {formatCurrency(r.amount_paid)} | Due: {formatCurrency(r.amount_remaining)}
+                              </div>
                             )}
                           </td>
-                          <td style={{ fontSize: '13px', color: '#64748b' }}>
-                            {formatDate(r.issue_date)}
-                          </td>
+                          <td>{categoryBadge(r.category)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan="2"><strong>TOTAL</strong></td>
+                        <td colSpan="3"><strong>TOTAL</strong></td>
                         <td className="amount"><strong>{formatCurrency(summary.total_deposited.amount)}</strong></td>
-                        <td colSpan="5"></td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   </table>

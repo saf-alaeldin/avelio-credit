@@ -62,3 +62,18 @@
   .appheader { grid-template-columns: auto 1fr auto; }
   .app-nav { overflow-x:auto; gap:12px; }
 }
+
+@media print {
+  .appheader {
+    position: static;
+    border-top: none;
+    border-bottom: none;
+    padding: 8px 0;
+    display: block;
+    backdrop-filter: none;
+  }
+  .app-nav,
+  .avatar-wrap {
+    display: none !important;
+  }
+}

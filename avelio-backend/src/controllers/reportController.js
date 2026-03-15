@@ -335,7 +335,7 @@ const getAgenciesReport = async (req, res) => {
       SELECT
         r.id, r.receipt_number, r.amount, r.currency, r.status, r.payment_method,
         r.issue_date, r.issue_time, r.is_deposited, r.is_external, r.station_code,
-        r.payment_date,
+        r.payment_date, r.amount_paid, r.amount_remaining,
         a.agency_id as agency_code, a.agency_name
       FROM receipts r
       INNER JOIN agencies a ON r.agency_id = a.id
@@ -414,6 +414,8 @@ const getAgenciesReport = async (req, res) => {
 
     const details = receipts.map(r => {
       const amount = roundMoney(parseFloat(r.amount));
+      const amountPaid = roundMoney(parseFloat(r.amount_paid || 0));
+      const amountRemaining = roundMoney(parseFloat(r.amount_remaining || (amount - amountPaid)));
       const status = (r.status || '').toUpperCase();
       const paymentMethod = (r.payment_method || '').toUpperCase();
       const isExternal = r.is_external || false;
@@ -424,12 +426,21 @@ const getAgenciesReport = async (req, res) => {
       totalDeposited += amount;
       totalDepositedCount++;
 
-      // Categorize
+      // Categorize — for partially paid PENDING receipts, split between paid and pending
       let category = 'cash';
       if (status === 'PENDING' || status === 'OVERDUE') {
-        totalPending += amount;
-        totalPendingCount++;
-        category = 'pending';
+        if (amountPaid > 0 && amountRemaining > 0) {
+          // Partially paid: split the amount
+          totalPaid += amountPaid;
+          totalPaidCount++;
+          totalPending += amountRemaining;
+          totalPendingCount++;
+          category = 'partial';
+        } else {
+          totalPending += amount;
+          totalPendingCount++;
+          category = 'pending';
+        }
       } else if (isExternal) {
         totalEBB += amount;
         totalEBBCount++;
@@ -449,6 +460,8 @@ const getAgenciesReport = async (req, res) => {
         agency_code: r.agency_code,
         agency_name: r.agency_name,
         amount,
+        amount_paid: amountPaid,
+        amount_remaining: amountRemaining,
         currency: r.currency,
         status,
         payment_method: r.payment_method,
