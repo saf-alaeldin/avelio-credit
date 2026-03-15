@@ -6,6 +6,7 @@ import {
   CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement,
   Title, Tooltip, Legend, Filler, LineController, BarController, DoughnutController
 } from 'chart.js';
+import { getApiBaseUrl } from '../services/api';
 import './Analytics.css';
 
 ChartJS.register(
@@ -13,17 +14,7 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler, LineController, BarController, DoughnutController
 );
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 async function apiGet(path) {
   const token =
@@ -88,153 +79,35 @@ export default function Analytics() {
 
   const chartsRef = useRef({});
 
-  // fetch & compute
+  // fetch analytics from server-side endpoint (all aggregation done in SQL)
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
         setError('');
 
-        console.log('📊 Fetching analytics data...');
+        console.log('📊 Fetching analytics from server...');
 
-        // Fetch all receipts with a large pageSize for accurate analytics
-        // We need ALL receipts, not just paginated results
-        const res = await apiGet('/receipts?pageSize=10000');
-        const receipts = res?.data?.receipts || res?.receipts || [];
+        // Single API call - all aggregation done server-side via SQL
+        const res = await apiGet('/stats/analytics');
+        const a = res?.data || res;
 
-        console.log('✅ Analytics data loaded:', receipts.length, 'receipts');
+        console.log('✅ Analytics loaded from server');
 
-        const now = new Date();
-        const thisMonth = now.getMonth();
-        const thisYear  = now.getFullYear();
-        const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-        const lastYear  = thisMonth === 0 ? thisYear - 1 : thisYear;
-
-        const a = {
-          totalRevenue: 0,
-          paidRevenue: 0,
-          pendingRevenue: 0,
-          voidRevenue: 0,
-          totalReceipts: receipts.length,
-          paidReceipts: 0,
-          pendingReceipts: 0,
-          voidReceipts: 0,
-          thisMonthRevenue: 0,
-          lastMonthRevenue: 0,
-          thisMonthReceipts: 0,
-          lastMonthReceipts: 0,
-          averageReceiptValue: 0,
-          byStatus: { PAID: 0, PENDING: 0, VOID: 0 },
-          byMonth: {},           // { 'YYYY-MM': { revenue, count } }
-          byMonthStatus: {},     // { 'YYYY-MM': { PAID:count, PENDING:count, VOID:count } }
-          topAgencies: {},       // { name: { count, revenue } }
-          growthRate: 0,
-          // New analytics data
-          byPaymentMethod: {},   // { method: { count, revenue } }
-          pendingAging: { '0-7': 0, '8-14': 0, '15-30': 0, '31-60': 0, '60+': 0 },
-          avgDaysToPayment: 0,
-          fastestPayers: {},     // { agency: avgDays }
-          slowestPayers: {}      // { agency: avgDays }
-        };
-
-        receipts.forEach(r => {
-          const amount = parseFloat(r.amount || 0);
-          const status = (r.status || 'UNKNOWN').toUpperCase();
-          const d = new Date(r.issue_date);
-          const m = d.getMonth();
-          const y = d.getFullYear();
-          const key = `${y}-${String(m + 1).padStart(2,'0')}`;
-
-          // Track all statuses for pie chart
-          a.byStatus[status] = (a.byStatus[status] || 0) + amount;
-
-          // Count receipts by status
-          if (status === 'PAID') {
-            a.paidRevenue += amount;
-            a.paidReceipts++;
-            a.totalRevenue += amount; // Only add PAID to total revenue
-          }
-          else if (status === 'PENDING') {
-            a.pendingRevenue += amount;
-            a.pendingReceipts++;
-            a.totalRevenue += amount; // Only add PENDING to total revenue
-          }
-          else if (status === 'VOID') {
-            a.voidRevenue += amount;
-            a.voidReceipts++;
-            // DO NOT add VOID to total revenue
-          }
-
-          // Monthly data - only include non-void receipts in revenue
-          if (!a.byMonth[key]) a.byMonth[key] = { revenue: 0, count: 0 };
-          if (status !== 'VOID') {
-            a.byMonth[key].revenue += amount;
-            a.byMonth[key].count++;
-          }
-
-          // Track status counts by month (for stacked chart)
-          if (!a.byMonthStatus[key]) a.byMonthStatus[key] = { PAID: 0, PENDING: 0, VOID: 0 };
-          a.byMonthStatus[key][status] = (a.byMonthStatus[key][status] || 0) + 1;
-
-          // This month and last month - only non-void
-          if (status !== 'VOID') {
-            if (m === thisMonth && y === thisYear) {
-              a.thisMonthRevenue += amount;
-              a.thisMonthReceipts++;
-            }
-            if (m === lastMonth && y === lastYear) {
-              a.lastMonthRevenue += amount;
-              a.lastMonthReceipts++;
-            }
-          }
-
-          // Top agencies - only non-void receipts
-          if (status !== 'VOID') {
-            const agency = r.agency?.agency_name || r.agency_name || 'Unknown';
-            if (!a.topAgencies[agency]) a.topAgencies[agency] = { count: 0, revenue: 0 };
-            a.topAgencies[agency].count++;
-            a.topAgencies[agency].revenue += amount;
-          }
-
-          // Payment method analysis - only non-void
-          if (status !== 'VOID') {
-            const method = r.payment_method || 'Not Specified';
-            if (!a.byPaymentMethod[method]) a.byPaymentMethod[method] = { count: 0, revenue: 0 };
-            a.byPaymentMethod[method].count++;
-            a.byPaymentMethod[method].revenue += amount;
-          }
-
-          // Aging analysis for PENDING receipts
-          if (status === 'PENDING') {
-            const issueDate = new Date(r.issue_date);
-            const daysPending = Math.floor((now - issueDate) / (1000 * 60 * 60 * 24));
-
-            if (daysPending <= 7) a.pendingAging['0-7']++;
-            else if (daysPending <= 14) a.pendingAging['8-14']++;
-            else if (daysPending <= 30) a.pendingAging['15-30']++;
-            else if (daysPending <= 60) a.pendingAging['31-60']++;
-            else a.pendingAging['60+']++;
-          }
-        });
-
-        // Average receipt value - only count non-void receipts
-        const nonVoidReceipts = a.paidReceipts + a.pendingReceipts;
-        a.averageReceiptValue = nonVoidReceipts > 0 ? a.totalRevenue / nonVoidReceipts : 0;
-        if (a.lastMonthRevenue > 0) {
-          a.growthRate = ((a.thisMonthRevenue - a.lastMonthRevenue) / a.lastMonthRevenue) * 100;
-        }
-
-        a.topAgenciesList = Object.entries(a.topAgencies)
-          .map(([name, v]) => ({ name, ...v }))
-          .sort((x, y) => y.revenue - x.revenue)
-          .slice(0, 10);
+        // Ensure defaults for any missing fields
+        a.byPaymentMethod = a.byPaymentMethod || {};
+        a.pendingAging = a.pendingAging || { '0-7': 0, '8-14': 0, '15-30': 0, '31-60': 0, '60+': 0 };
+        a.topAgenciesList = a.topAgenciesList || [];
+        a.byMonth = a.byMonth || {};
+        a.byMonthStatus = a.byMonthStatus || {};
+        a.byStatus = a.byStatus || { PAID: 0, PENDING: 0, VOID: 0 };
 
         setData(a);
       } catch (e) {
         console.error('❌ Analytics error:', e);
         const errorMsg = e.message || 'Failed to load analytics';
         setError(errorMsg);
-        
+
         // If it's an auth error, redirect to login
         if (errorMsg.toLowerCase().includes('token') || errorMsg.toLowerCase().includes('auth')) {
           console.log('🚪 Auth error - redirecting to login');

@@ -3,6 +3,11 @@ const { generateReceiptQR } = require('../utils/qrcode');
 const AuditLogger = require('../utils/audit');
 const logger = require('../utils/logger');
 
+// Round money to 2 decimal places to avoid floating-point errors
+const roundMoney = (value) => {
+  return Math.round((parseFloat(value) || 0) * 100) / 100;
+};
+
 // Generate receipt number
 // Format: KU251114-0001 (KU = Kush Air IATA code, YYMMDD = date, 4-digit sequential number reset daily)
 async function generateReceiptNumber(stationCode) {
@@ -28,7 +33,7 @@ async function generateReceiptNumber(stationCode) {
 // CREATE RECEIPT
 const createReceipt = async (req, res) => {
   try {
-    const { agency_id, amount, currency, payment_method, status, remarks, due_date } = req.body;
+    const { agency_id, amount, currency, payment_method, status, remarks, due_date, station_code: requestedStation } = req.body;
     const user = req.user; // From auth middleware
 
     // Debug logging
@@ -89,13 +94,13 @@ const createReceipt = async (req, res) => {
 
     // Credit limit check - only for PENDING receipts
     if (status === 'PENDING') {
-      const currentBalance = parseFloat(agency.outstanding_balance || 0);
-      const creditLimit = parseFloat(agency.credit_limit || 0);
-      const newBalance = currentBalance + parseFloat(amount);
+      const currentBalance = roundMoney(agency.outstanding_balance);
+      const creditLimit = roundMoney(agency.credit_limit);
+      const newBalance = roundMoney(currentBalance + roundMoney(amount));
 
       // Check if new balance would exceed credit limit
       if (creditLimit > 0 && newBalance > creditLimit) {
-        const exceededAmount = newBalance - creditLimit;
+        const exceededAmount = roundMoney(newBalance - creditLimit);
         logger.warn('Credit limit exceeded attempt', {
           agency_id: agency.id,
           agency_name: agency.agency_name,
@@ -118,8 +123,9 @@ const createReceipt = async (req, res) => {
       }
     }
 
-    // Generate receipt number
-    const stationCode = user.station || user.station_code || 'JUB'; // Fallback to JUB
+    // Generate receipt number - use requested station or fall back to user's station
+    const stationCode = requestedStation || user.station || user.station_code || 'JUB';
+    const isExternal = stationCode !== (user.station || user.station_code || 'JUB');
     const receiptNumber = await generateReceiptNumber(stationCode);
 
     logger.debug('Generating receipt', {
@@ -146,15 +152,15 @@ const createReceipt = async (req, res) => {
     // Format: "YYYY-MM-DD HH:MM:SS"
     const [issueDate, issueTime] = jubaDateTimeStr.split(' ');
 
-    // Set payment date if status is PAID
-    const paymentDate = status === 'PAID' ? now.toISOString() : null;
+    // Set payment date if status is PAID (use Africa/Juba timezone)
+    const paymentDate = status === 'PAID' ? issueDate : null;
 
     // Insert receipt
     const result = await db.query(
-      `INSERT INTO receipts 
-       (receipt_number, agency_id, user_id, amount, currency, payment_method, status, 
-        issue_date, issue_time, payment_date, due_date, station_code, issued_by_name, remarks, is_synced) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO receipts
+       (receipt_number, agency_id, user_id, amount, currency, payment_method, status,
+        issue_date, issue_time, payment_date, due_date, station_code, issued_by_name, remarks, is_synced, is_external)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         receiptNumber,
@@ -168,10 +174,11 @@ const createReceipt = async (req, res) => {
         issueTime,
         paymentDate,
         due_date,
-        stationCode, // Use the fallback station code
-        user.name || user.username || user.full_name || 'Staff', // Fallback for name
+        stationCode,
+        user.name || user.username || user.full_name || 'Staff',
         remarks,
-        true
+        true,
+        isExternal
       ]
     );
 
@@ -190,7 +197,7 @@ const createReceipt = async (req, res) => {
         logger.info('Outstanding balance updated', {
           agency_id: agency.id,
           amount: amount,
-          new_balance: parseFloat(agency.outstanding_balance || 0) + parseFloat(amount)
+          new_balance: roundMoney(roundMoney(agency.outstanding_balance) + roundMoney(amount))
         });
       } catch (balanceError) {
         logger.error('Failed to update outstanding balance:', {
@@ -278,19 +285,18 @@ const getReceipts = async (req, res) => {
     const limit = parseInt(pageSize);
     const offset = (parseInt(page) - 1) * limit;
 
-    // Build base query for counting total
-    let countQuery = `
-      SELECT COUNT(*) as total
-      FROM receipts r
-      LEFT JOIN agencies a ON r.agency_id = a.id
-      WHERE r.is_void = false
-    `;
-
-    // Build query for data
+    // Build optimized query - select only needed columns and use window function for count
+    // Using INNER JOIN since every receipt must have an agency
     let query = `
-      SELECT r.*, a.agency_id as agency_code, a.agency_name
+      SELECT
+        r.id, r.receipt_number, r.amount, r.amount_paid, r.amount_remaining,
+        r.currency, r.status, r.payment_method, r.issue_date, r.issue_time,
+        r.payment_date, r.station_code, r.issued_by_name,
+        r.is_deposited, r.deposited_at, r.is_external,
+        a.agency_id as agency_code, a.agency_name,
+        COUNT(*) OVER() as total_count
       FROM receipts r
-      LEFT JOIN agencies a ON r.agency_id = a.id
+      INNER JOIN agencies a ON r.agency_id = a.id
       WHERE r.is_void = false
     `;
 
@@ -299,70 +305,57 @@ const getReceipts = async (req, res) => {
 
     // Authorization filter: only staff see their own receipts (admin and manager see all)
     if (userRole !== 'admin' && userRole !== 'manager') {
-      const authFilter = ` AND r.user_id = $${paramCount}`;
-      countQuery += authFilter;
-      query += authFilter;
+      query += ` AND r.user_id = $${paramCount}`;
       params.push(userId);
       paramCount++;
     }
 
-    // Add filters (same for both queries)
-    let filterClause = '';
-    
+    // Add filters
     if (status) {
-      filterClause += ` AND UPPER(r.status) = UPPER($${paramCount})`;
-      params.push(status);
+      query += ` AND r.status = $${paramCount}`;
+      params.push(status.toUpperCase());
       paramCount++;
     }
 
     if (agency_id) {
-      filterClause += ` AND a.agency_id = $${paramCount}`;
+      query += ` AND a.agency_id = $${paramCount}`;
       params.push(agency_id);
       paramCount++;
     }
 
     if (date_from) {
-      filterClause += ` AND r.issue_date >= $${paramCount}`;
+      query += ` AND (CASE WHEN r.status = 'PAID' AND r.payment_date IS NOT NULL THEN r.payment_date::date ELSE r.issue_date END) >= $${paramCount}`;
       params.push(date_from);
       paramCount++;
     }
 
     if (date_to) {
-      filterClause += ` AND r.issue_date <= $${paramCount}`;
+      query += ` AND (CASE WHEN r.status = 'PAID' AND r.payment_date IS NOT NULL THEN r.payment_date::date ELSE r.issue_date END) <= $${paramCount}`;
       params.push(date_to);
       paramCount++;
     }
 
-    // Add search filter - searches across multiple fields
+    // Optimized search filter - prioritize indexed columns
     if (search && search.trim()) {
-      filterClause += ` AND (
-        LOWER(r.receipt_number) LIKE LOWER($${paramCount}) OR
-        LOWER(a.agency_name) LIKE LOWER($${paramCount}) OR
-        LOWER(a.agency_id) LIKE LOWER($${paramCount}) OR
-        LOWER(r.status) LIKE LOWER($${paramCount}) OR
-        LOWER(r.currency) LIKE LOWER($${paramCount}) OR
-        CAST(r.amount AS TEXT) LIKE $${paramCount} OR
-        CAST(r.amount_paid AS TEXT) LIKE $${paramCount} OR
-        LOWER(r.payment_method) LIKE LOWER($${paramCount}) OR
-        LOWER(r.remarks) LIKE LOWER($${paramCount})
+      const searchTerm = `%${search.trim().toLowerCase()}%`;
+      query += ` AND (
+        r.receipt_number ILIKE $${paramCount} OR
+        a.agency_name ILIKE $${paramCount} OR
+        a.agency_id ILIKE $${paramCount} OR
+        r.status ILIKE $${paramCount}
       )`;
-      params.push(`%${search.trim()}%`);
+      params.push(searchTerm);
       paramCount++;
     }
 
-    // Apply filters to both queries
-    countQuery += filterClause;
-    query += filterClause;
-
-    // Get total count
-    const countResult = await db.query(countQuery, params);
-    const total = parseInt(countResult.rows[0].total);
-
-    // Add ordering and pagination to data query
-    query += ` ORDER BY r.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    // Add ordering and pagination
+    query += ` ORDER BY (CASE WHEN r.status = 'PAID' AND r.payment_date IS NOT NULL THEN r.payment_date::date ELSE r.issue_date END) DESC, r.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
     params.push(limit, offset);
 
     const result = await db.query(query, params);
+
+    // Get total from window function (available in first row, or 0 if no results)
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
 
     res.json({
       success: true,
@@ -389,7 +382,10 @@ const getReceipts = async (req, res) => {
           issue_time: r.issue_time,
           payment_date: r.payment_date,
           station: r.station_code,
-          issued_by: r.issued_by_name
+          issued_by: r.issued_by_name,
+          is_deposited: r.is_deposited || false,
+          deposited_at: r.deposited_at,
+          is_external: r.is_external || false
         }))
       }
     });
@@ -474,6 +470,7 @@ const updateReceiptStatus = async (req, res) => {
     const { id } = req.params;
     const { status, payment_date } = req.body;
     const userId = req.user.id;
+    const userName = req.user.name || req.user.username || 'Staff';
 
     if (!status) {
       return res.status(400).json({
@@ -484,7 +481,7 @@ const updateReceiptStatus = async (req, res) => {
 
     // Get current receipt data before update for audit trail and balance calculation
     const currentReceipt = await db.query(
-      'SELECT status, amount, agency_id FROM receipts WHERE id = $1',
+      'SELECT status, amount, amount_paid, agency_id FROM receipts WHERE id = $1',
       [id]
     );
 
@@ -496,17 +493,51 @@ const updateReceiptStatus = async (req, res) => {
     }
 
     const oldStatus = currentReceipt.rows[0]?.status;
-    const receiptAmount = parseFloat(currentReceipt.rows[0]?.amount || 0);
+    const receiptAmount = roundMoney(currentReceipt.rows[0]?.amount);
+    const amountPaid = roundMoney(currentReceipt.rows[0]?.amount_paid || 0);
     const agencyId = currentReceipt.rows[0]?.agency_id;
     const userRole = req.user.role || 'staff';
+
+    const now = new Date();
+    const jubaDateTimeStr = now.toLocaleString('sv-SE', {
+      timeZone: 'Africa/Juba',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    });
+    const [jubaDate, jubaTime] = jubaDateTimeStr.split(' ');
+    const paidDate = payment_date || jubaDate;
+
+    // If marking as PAID and there's a remaining balance, auto-create a partial payment
+    if (status === 'PAID' && amountPaid > 0 && amountPaid < receiptAmount) {
+      const remainingAmount = roundMoney(receiptAmount - amountPaid);
+      const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      const [yearFull, month, day] = jubaDate.split('-');
+      const paymentNumber = `KU${yearFull.slice(-2)}${month}${day}-PAY-${random}`;
+
+      await db.query(
+        `INSERT INTO payments
+         (receipt_id, payment_number, amount, payment_date, payment_time, payment_method, remarks, created_by, created_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, paymentNumber, remainingAmount, paidDate, jubaTime, 'CASH', 'Auto-created: remaining balance on mark as paid', userId, userName]
+      );
+      logger.info('Auto-created partial payment for remaining balance', {
+        receipt_id: id,
+        amount: remainingAmount,
+        payment_number: paymentNumber
+      });
+    }
 
     // Authorization check: user must own the receipt, be admin, or be manager
     const result = await db.query(
       `UPDATE receipts
-       SET status = $1, payment_date = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3 AND (user_id = $4 OR $5 = 'admin' OR $5 = 'manager')
+       SET status = $1::text, payment_date = $2,
+           amount_paid = CASE WHEN $1::text = 'PAID' THEN amount ELSE amount_paid END,
+           amount_remaining = CASE WHEN $1::text = 'PAID' THEN 0 ELSE amount_remaining END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 AND (user_id = $4 OR $5::text = 'admin' OR $5::text = 'manager')
        RETURNING *`,
-      [status, payment_date || new Date().toISOString(), id, userId, userRole]
+      [status, paidDate, id, userId, userRole]
     );
 
     if (result.rows.length === 0) {
@@ -536,7 +567,6 @@ const updateReceiptStatus = async (req, res) => {
           error: balanceError.message,
           agency_id: agencyId
         });
-        // Continue - status was updated successfully
       }
     }
 
@@ -621,7 +651,7 @@ const voidReceipt = async (req, res) => {
     // Update outstanding balance if receipt was PENDING (reverse the charge)
     if (receipt.status === 'PENDING') {
       try {
-        const receiptAmount = parseFloat(receipt.amount || 0);
+        const receiptAmount = roundMoney(receipt.amount);
         await db.query(
           `UPDATE agencies
            SET outstanding_balance = GREATEST(outstanding_balance - $1, 0),

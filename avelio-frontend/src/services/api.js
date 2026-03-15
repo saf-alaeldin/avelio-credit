@@ -5,34 +5,27 @@ import cache, { CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 // ========================================
 // SMART API URL DETECTION (Auto-detects based on window location)
 // ========================================
-const getApiBaseUrl = () => {
-  // Debug logging
-  console.log('🔍 DEBUG - Detecting API URL...');
-  console.log('   window.location.hostname:', window.location.hostname);
-  console.log('   window.location.href:', window.location.href);
-  console.log('   process.env.REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-
+export const getApiBaseUrl = () => {
   // 1. First priority: Environment variable (if set)
   if (process.env.REACT_APP_API_URL) {
-    console.log('   ✅ Using env variable:', process.env.REACT_APP_API_URL);
     return process.env.REACT_APP_API_URL;
   }
 
-  // 2. Auto-detect based on current window location (for local network access)
-  const hostname = window.location.hostname;
-  const port = 5001; // Backend port
-
-  // If accessing via network IP, use that same IP for backend
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    const apiUrl = `http://${hostname}:${port}/api/v1`;
-    console.log('   ✅ Using network IP:', apiUrl);
-    return apiUrl;
+  // 2. If accessed via HTTPS (through reverse proxy), use relative path
+  if (window.location.protocol === 'https:') {
+    return '/api/v1';
   }
 
-  // 3. Default to localhost for local development
-  const apiUrl = `http://localhost:${port}/api/v1`;
-  console.log('   ✅ Using localhost:', apiUrl);
-  return apiUrl;
+  // 3. Auto-detect based on current window location (for local network access)
+  const hostname = window.location.hostname;
+  const port = 5001;
+
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `http://${hostname}:${port}/api/v1`;
+  }
+
+  // 4. Default to localhost for local development
+  return `http://localhost:${port}/api/v1`;
 };
 
 // ========================================
@@ -43,9 +36,37 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 120000, // 120 second timeout (increased for PDF generation and large queries)
   withCredentials: false // Set to true if using cookies
 });
+
+// ========================================
+// TOKEN EXPIRATION CHECK
+// ========================================
+const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const expirationTime = payload.exp * 1000; // Convert to milliseconds
+    const currentTime = Date.now();
+    // Add 10 second buffer to handle clock skew (30s was too aggressive, caused premature logouts)
+    return currentTime >= (expirationTime - 10000);
+  } catch (error) {
+    logger.error('Error checking token expiration:', error);
+    return true;
+  }
+};
+
+const handleSessionExpired = () => {
+  logger.error('🚫 Session expired - redirecting to login');
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  // Store message to show on login page
+  localStorage.setItem('sessionExpiredMessage', 'Your session has expired. Please log in again.');
+  // Dispatch event for App.js to detect
+  window.dispatchEvent(new Event('logout-success'));
+  window.location.href = '/login';
+};
 
 // ========================================
 // REQUEST INTERCEPTOR - Set dynamic baseURL and add token
@@ -67,6 +88,12 @@ api.interceptors.request.use(
     // Get token from localStorage
     const token = localStorage.getItem('token');
 
+    // Check if token is expired BEFORE making the request
+    if (token && isTokenExpired(token)) {
+      handleSessionExpired();
+      return Promise.reject(new Error('TOKEN_EXPIRED'));
+    }
+
     // Add token to headers if it exists
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -84,6 +111,49 @@ api.interceptors.request.use(
 );
 
 // ========================================
+// RETRY LOGIC WITH EXPONENTIAL BACKOFF
+// ========================================
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000; // 1 second
+
+const shouldRetry = (error) => {
+  // Don't retry if no error info
+  if (!error) return false;
+  // Don't retry on client errors (4xx) - those won't change
+  if (error.response && error.response.status >= 400 && error.response.status < 500) return false;
+  // Don't retry on token expiration
+  if (error.message === 'TOKEN_EXPIRED') return false;
+  // Don't retry file upload/download (blob responses) - too expensive
+  if (error.config?.responseType === 'blob') return false;
+  // Retry on network errors (no response) or server errors (5xx)
+  if (!error.response || error.response.status >= 500) return true;
+  return false;
+};
+
+const retryDelay = (attempt) => {
+  // Exponential backoff with jitter: base * 2^attempt + random(0-500ms)
+  return BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+};
+
+const retryRequest = async (error) => {
+  const config = error.config;
+  if (!config) return Promise.reject(error);
+
+  config.__retryCount = config.__retryCount || 0;
+
+  if (config.__retryCount >= MAX_RETRIES || !shouldRetry(error)) {
+    return Promise.reject(error);
+  }
+
+  config.__retryCount += 1;
+  const delay = retryDelay(config.__retryCount - 1);
+  logger.debug(`Retrying request (${config.__retryCount}/${MAX_RETRIES}) in ${Math.round(delay)}ms: ${config.url}`);
+
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return api(config);
+};
+
+// ========================================
 // RESPONSE INTERCEPTOR - Handle errors globally
 // ========================================
 api.interceptors.response.use(
@@ -95,43 +165,51 @@ api.interceptors.response.use(
     // Handle different error scenarios
     if (error.response) {
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 401:
           // Unauthorized - token invalid or expired
-          logger.error('🚫 Authentication failed - redirecting to login');
+          // Redirect immediately without showing error message
+          logger.error('Session expired - redirecting to login');
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.setItem('sessionExpiredMessage', 'Your session has expired. Please log in again.');
+          window.dispatchEvent(new Event('logout-success'));
           window.location.href = '/login';
-          break;
+          // Return a never-resolving promise to prevent error handling in components
+          return new Promise(() => {});
 
         case 403:
           // Forbidden - user doesn't have permission
-          logger.error('🚫 Access forbidden');
+          logger.error('Access forbidden');
           break;
-          
+
         case 404:
           // Not found
-          logger.error('🔍 Resource not found');
+          logger.error('Resource not found');
           break;
-          
+
         case 500:
-          // Server error
-          logger.error('💥 Server error:', data?.message);
+          // Server error - may be retried
+          logger.error('Server error:', data?.message);
           break;
-          
+
         default:
-          logger.error(`❌ Error ${status}:`, data?.message);
+          logger.error(`Error ${status}:`, data?.message);
       }
     } else if (error.request) {
       // Request was made but no response received
-      logger.error('📡 No response from server - check your connection');
+      logger.error('No response from server - check your connection');
+    } else if (error.message === 'TOKEN_EXPIRED') {
+      // Token expired - already handled in request interceptor
+      return new Promise(() => {});
     } else {
       // Something else happened
-      logger.error('❌ Request error:', error.message);
+      logger.error('Request error:', error.message);
     }
-    
-    return Promise.reject(error);
+
+    // Attempt retry for eligible errors
+    return retryRequest(error);
   }
 );
 

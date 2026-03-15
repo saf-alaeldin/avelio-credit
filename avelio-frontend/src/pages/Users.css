@@ -118,6 +118,11 @@
   color: white;
 }
 
+.badge-auditor {
+  background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+  color: white;
+}
+
 .badge-staff {
   background: linear-gradient(135deg, #10B981 0%, #059669 100%);
   color: white;

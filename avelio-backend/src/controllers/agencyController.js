@@ -57,6 +57,55 @@ exports.createAgency = async (req, res) => {
   }
 };
 
+// --- GET AGENCY STATS (server-side aggregation) ---
+exports.getAgencyStats = async (req, res) => {
+  const { agency_id } = req.params;
+  if (!agency_id) {
+    return res.status(400).json({ status: 'error', message: 'agency_id is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const statsSQL = `
+      SELECT
+        COUNT(*)                                                                    AS total_receipts,
+        COUNT(*) FILTER (WHERE UPPER(COALESCE(status,'')) = 'PENDING')              AS pending_count,
+        COALESCE(SUM(
+          CASE WHEN UPPER(COALESCE(status,'')) = 'PENDING'
+               THEN COALESCE(amount_remaining, amount, 0)
+               ELSE 0
+          END
+        ), 0)::numeric                                                              AS pending_amount,
+        COALESCE(SUM(
+          CASE WHEN UPPER(COALESCE(status,'')) = 'PAID'
+               THEN COALESCE(amount, 0)
+               WHEN UPPER(COALESCE(status,'')) = 'PENDING'
+               THEN COALESCE(amount_paid, 0)
+               ELSE 0
+          END
+        ), 0)::numeric                                                              AS total_revenue
+      FROM receipts
+      WHERE agency_id = (SELECT id FROM agencies WHERE agency_id = $1 LIMIT 1)
+    `;
+    const stats = (await client.query(statsSQL, [agency_id])).rows[0];
+
+    res.json({
+      status: 'success',
+      data: {
+        total_receipts: Number(stats.total_receipts),
+        pending_count: Number(stats.pending_count),
+        pending_amount: Number(stats.pending_amount),
+        total_revenue: Number(stats.total_revenue),
+      }
+    });
+  } catch (err) {
+    console.error('Agency stats error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch agency stats' });
+  } finally {
+    client.release();
+  }
+};
+
 // --- BULK IMPORT ---
 exports.createAgenciesBulk = async (req, res) => {
   const agencies = req.body?.agencies || [];

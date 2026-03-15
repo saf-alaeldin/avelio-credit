@@ -46,6 +46,18 @@ if not exist "avelio-frontend\.env" (
     exit /b 1
 )
 
+REM Kill any existing processes on ports 3000 and 5001
+echo Checking for existing processes...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
+    echo Killing existing frontend process (PID: %%a)...
+    taskkill /F /PID %%a >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5001 ^| findstr LISTENING') do (
+    echo Killing existing backend process (PID: %%a)...
+    taskkill /F /PID %%a >nul 2>&1
+)
+echo.
+
 REM Start backend in new window
 echo Starting backend server on port 5001...
 start "Kush Air - Backend" cmd /k "cd avelio-backend && npm start"

@@ -1,24 +1,19 @@
 // src/pages/Receipts.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, Upload } from 'lucide-react';
 import ReceiptDetailsModal from '../pages/ReceiptDetailsModal';
+import ImportPreviewModal from '../pages/ImportPreviewModal';
+import { getApiBaseUrl } from '../services/api';
 import './Receipts.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+// Use centralized API URL detection
+const API_BASE = getApiBaseUrl();
 
 async function apiGet(path, params = {}) {
-  const url = new URL(API_BASE + path);
+  // Build URL - handle both relative and absolute API_BASE
+  const baseUrl = API_BASE.startsWith('/') ? window.location.origin + API_BASE : API_BASE;
+  const url = new URL(baseUrl + path);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const token =
     localStorage.getItem('token') ||
@@ -55,9 +50,24 @@ export default function Receipts() {
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Import state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importPreviewData, setImportPreviewData] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Default to today's date for better performance
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+
+  // If navigating from dashboard with status/overdue filter, clear date filters to show all-time
+  const initialDateFrom = todayStr;
+  const initialDateTo = todayStr;
+
   // Local filter state (for manual filters like search, date inputs)
-  const [manualDateFrom, setManualDateFrom] = useState('');
-  const [manualDateTo, setManualDateTo] = useState('');
+  const [manualDateFrom, setManualDateFrom] = useState(initialDateFrom);
+  const [manualDateTo, setManualDateTo] = useState(initialDateTo);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Read and compute filters from URL params directly (no state sync needed)
@@ -74,9 +84,8 @@ export default function Receipts() {
   let dateTo = manualDateTo;
 
   if (!manualDateFrom && !manualDateTo && urlDate === 'today') {
-    const today = new Date().toISOString().split('T')[0];
-    dateFrom = today;
-    dateTo = today;
+    dateFrom = todayStr;
+    dateTo = todayStr;
   }
 
   // Fetch receipts function
@@ -217,24 +226,18 @@ export default function Receipts() {
   };
 
   const clearFilters = () => {
-    setManualDateFrom('');
-    setManualDateTo('');
+    setManualDateFrom(todayStr);
+    setManualDateTo(todayStr);
     setSearchQuery('');
     setPage(1);
     setSearchParams({});
   };
 
   const handleStatusFilterClick = (status) => {
-    setManualDateFrom('');
-    setManualDateTo('');
     setPage(1);
-    // Update URL params to match the filter state
-    const urlDate = searchParams.get('date');
+    // When switching status tabs, keep the current date filters (default today)
     if (status) {
       setSearchParams({ status: status });
-    } else if (urlDate) {
-      // Keep date filter when clicking "All" tab
-      setSearchParams({ date: urlDate });
     } else {
       setSearchParams({});
     }
@@ -255,14 +258,119 @@ export default function Receipts() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // Import handlers
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // Reset input
+
+    setImportFile(file);
+    setImportLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = localStorage.getItem('token') || localStorage.getItem('authToken') || sessionStorage.getItem('token');
+      const baseUrl = API_BASE.startsWith('/') ? window.location.origin + API_BASE : API_BASE;
+      const res = await fetch(`${baseUrl}/receipts/import/preview`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setImportPreviewData(data.data);
+        setIsImportModalOpen(true);
+      } else {
+        setError(data.message || 'Import preview failed');
+        setTimeout(() => setError(''), 5000);
+      }
+    } catch (err) {
+      setError(`Import failed: ${err.message}`);
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+
+      const token = localStorage.getItem('token') || localStorage.getItem('authToken') || sessionStorage.getItem('token');
+      const baseUrl = API_BASE.startsWith('/') ? window.location.origin + API_BASE : API_BASE;
+      const res = await fetch(`${baseUrl}/receipts/import/execute`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setIsImportModalOpen(false);
+        setImportPreviewData(null);
+        setImportFile(null);
+        setRefreshTrigger(prev => prev + 1);
+        setImportResult(data.data);
+      } else {
+        setError(data.message || 'Import execution failed');
+      }
+    } catch (err) {
+      setError(`Import failed: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportClose = () => {
+    setIsImportModalOpen(false);
+    setImportPreviewData(null);
+    setImportFile(null);
+  };
+
   return (
     <div className="receipts-page">
       <div className="receipts-header">
         <div>
-          <h2 className="receipts-title">All Receipts</h2>
-          <p className="receipts-subtitle">{total} total receipts</p>
+          <h2 className="receipts-title">Receipts</h2>
+          <p className="receipts-subtitle">{total} receipt{total !== 1 ? 's' : ''}{dateFrom === dateTo && dateFrom === todayStr ? ' today' : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="receipts-btn receipts-btn--import"
+            onClick={handleImportClick}
+            disabled={importLoading}
+          >
+            <Upload size={16} />
+            {importLoading ? 'Processing...' : 'Import Excel'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx"
+            style={{ display: 'none' }}
+            onChange={handleFileSelected}
+          />
           <Link className="receipts-btn" to="/new-receipt">+ New Receipt</Link>
         </div>
       </div>
@@ -426,7 +534,7 @@ export default function Receipts() {
                     <th className="receipts-th">Paid</th>
                     <th className="receipts-th">Currency</th>
                     <th className="receipts-th">Status</th>
-                    <th className="receipts-th">Issue Date</th>
+                    <th className="receipts-th">Date</th>
                     <th className="receipts-th">Actions</th>
                   </tr>
                 </thead>
@@ -451,8 +559,22 @@ export default function Receipts() {
                         <td className="receipts-td">
                           {statusPill(receipt)}
                           {hasPartialPayment && <span style={{ marginLeft: '4px', fontSize: '11px', color: '#f6ad55' }}>(Partial)</span>}
+                          {receipt.is_deposited && <span className="receipts-badge receipts-badge--deposited">Deposited</span>}
+                          {receipt.is_external && <span className="receipts-badge receipts-badge--ebb">EBB</span>}
                         </td>
-                        <td className="receipts-td">{formatDT(receipt.issue_date, receipt.issue_time)}</td>
+                        <td className="receipts-td">
+                          {receipt.status?.toUpperCase() === 'PAID' && receipt.payment_date
+                            ? <>
+                                {formatDT(receipt.payment_date)}
+                                {receipt.issue_date && receipt.payment_date.slice(0,10) !== receipt.issue_date.slice(0,10) && (
+                                  <div style={{ fontSize: '11px', color: '#a0aec0', marginTop: '2px' }}>
+                                    Created: {formatDT(receipt.issue_date)}
+                                  </div>
+                                )}
+                              </>
+                            : formatDT(receipt.issue_date, receipt.issue_time)
+                          }
+                        </td>
                       <td className="receipts-td">
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
@@ -469,6 +591,7 @@ export default function Receipts() {
                             onClick={(e) => {
                               e.stopPropagation();
                               (async () => {
+                                let objectUrl = null;
                                 try {
                                   const token =
                                     localStorage.getItem('token') ||
@@ -477,12 +600,27 @@ export default function Receipts() {
                                   const res = await fetch(`${API_BASE}/receipts/${receipt.id}/pdf`, {
                                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                                   });
-                                  if (!res.ok) throw new Error('Failed to fetch PDF');
+                                  if (!res.ok) {
+                                    const errorText = await res.text().catch(() => '');
+                                    throw new Error(errorText || `Failed to fetch PDF (HTTP ${res.status})`);
+                                  }
                                   const blob = await res.blob();
-                                  const url = window.URL.createObjectURL(blob);
-                                  window.open(url, '_blank');
+                                  if (blob.size === 0) {
+                                    throw new Error('PDF file is empty');
+                                  }
+                                  objectUrl = window.URL.createObjectURL(blob);
+                                  window.open(objectUrl, '_blank');
+                                  // Revoke URL after a delay to allow browser to load
+                                  setTimeout(() => {
+                                    if (objectUrl) window.URL.revokeObjectURL(objectUrl);
+                                  }, 60000); // 1 minute delay
                                 } catch (err) {
-                                  alert('Error downloading PDF: ' + err.message);
+                                  // Clean up object URL if created
+                                  if (objectUrl) window.URL.revokeObjectURL(objectUrl);
+                                  // Show error in a more user-friendly way
+                                  setError(`PDF download failed: ${err.message}`);
+                                  // Clear error after 5 seconds
+                                  setTimeout(() => setError(''), 5000);
                                 }
                               })();
                             }}
@@ -526,6 +664,141 @@ export default function Receipts() {
         onClose={handleCloseModal}
         onStatusUpdated={handleStatusUpdated}
       />
+
+      {/* Import Preview Modal */}
+      <ImportPreviewModal
+        isOpen={isImportModalOpen}
+        data={importPreviewData}
+        loading={importLoading}
+        fileName={importFile?.name}
+        onConfirm={handleImportConfirm}
+        onClose={handleImportClose}
+      />
+
+      {/* Import Success Modal */}
+      {importResult && (
+        <div className="import-result-overlay" onClick={() => setImportResult(null)}>
+          <div className="import-result-modal" onClick={e => e.stopPropagation()}>
+            <div className="import-result-header">
+              <div className="import-result-icon">
+                {importResult.summary.errors > 0
+                  ? <span className="import-result-icon--warning">!</span>
+                  : <span className="import-result-icon--success">&#10003;</span>
+                }
+              </div>
+              <h3 className="import-result-title">
+                {importResult.summary.errors > 0 ? 'Import Completed with Errors' : 'Import Successful'}
+              </h3>
+              <p className="import-result-subtitle">
+                {(importResult.summary.deposited || 0) + (importResult.summary.created || 0) + (importResult.summary.ebb || 0)} entries processed
+              </p>
+            </div>
+
+            <div className="import-result-body">
+              <div className="import-result-stats">
+                {importResult.summary.deposited > 0 && (
+                  <div className="import-stat import-stat--deposited">
+                    <span className="import-stat__number">{importResult.summary.deposited}</span>
+                    <span className="import-stat__label">Deposited</span>
+                  </div>
+                )}
+                {importResult.summary.created > 0 && (
+                  <div className="import-stat import-stat--created">
+                    <span className="import-stat__number">{importResult.summary.created}</span>
+                    <span className="import-stat__label">Created</span>
+                  </div>
+                )}
+                {importResult.summary.ebb > 0 && (
+                  <div className="import-stat import-stat--ebb">
+                    <span className="import-stat__number">{importResult.summary.ebb}</span>
+                    <span className="import-stat__label">EBB</span>
+                  </div>
+                )}
+                {importResult.summary.rectified > 0 && (
+                  <div className="import-stat import-stat--created">
+                    <span className="import-stat__number">{importResult.summary.rectified}</span>
+                    <span className="import-stat__label">Rectified</span>
+                  </div>
+                )}
+                {importResult.summary.creditReversals > 0 && (
+                  <div className="import-stat import-stat--errors">
+                    <span className="import-stat__number">{importResult.summary.creditReversals}</span>
+                    <span className="import-stat__label">Reversed</span>
+                  </div>
+                )}
+                {importResult.summary.skipped > 0 && (
+                  <div className="import-stat import-stat--skipped">
+                    <span className="import-stat__number">{importResult.summary.skipped}</span>
+                    <span className="import-stat__label">Skipped</span>
+                  </div>
+                )}
+                {importResult.summary.errors > 0 && (
+                  <div className="import-stat import-stat--errors">
+                    <span className="import-stat__number">{importResult.summary.errors}</span>
+                    <span className="import-stat__label">Errors</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Results details */}
+              {importResult.results && importResult.results.length > 0 && (
+                <div className="import-result-details">
+                  <table className="import-result-table">
+                    <thead>
+                      <tr>
+                        <th>Action</th>
+                        <th>Receipt #</th>
+                        <th>Agency</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importResult.results.map((r, i) => (
+                        <tr key={i} className={r.action === 'error' ? 'import-result-row--error' : ''}>
+                          <td>
+                            <span className={`import-action-badge import-action-badge--${
+                              r.action === 'credit_reversal' ? 'error' :
+                              r.action === 'amount_rectified' || r.action === 'deposited_rectified' ? 'created' :
+                              r.action}`}>
+                              {r.action === 'deposited' ? 'Deposited' :
+                               r.action === 'deposited_rectified' ? 'Deposited+Fixed' :
+                               r.action === 'amount_rectified' ? 'Amount Fixed' :
+                               r.action === 'created' ? 'Created' :
+                               r.action === 'ebb_created' ? 'EBB' :
+                               r.action === 'credit_reversal' ? 'Reversed' :
+                               r.action === 'skipped' ? 'Skipped' :
+                               'Error'}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{r.receiptNumber || '-'}</td>
+                          <td>{r.agency || '-'}</td>
+                          <td className="import-result-detail-cell">
+                            {r.action === 'error' && <span style={{ color: '#dc2626' }}>{r.reason}</span>}
+                            {r.action === 'skipped' && <span style={{ color: '#6b7280' }}>{r.reason}</span>}
+                            {(r.action === 'amount_rectified' || r.action === 'deposited_rectified') && r.oldAmount !== undefined && (
+                              <span style={{ color: '#d97706' }}>{r.oldAmount} → {r.amount}</span>
+                            )}
+                            {r.action === 'credit_reversal' && <span style={{ color: '#dc2626' }}>{r.reason}</span>}
+                            {r.amount > 0 && !['error', 'skipped', 'amount_rectified', 'deposited_rectified', 'credit_reversal'].includes(r.action) && (
+                              <span>USD {Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="import-result-footer">
+              <button className="import-result-btn" onClick={() => setImportResult(null)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

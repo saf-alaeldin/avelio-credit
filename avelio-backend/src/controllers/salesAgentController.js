@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 // GET all sales agents
 const getSalesAgents = async (req, res) => {
   try {
-    const { station_id, active_only } = req.query;
+    const { station_id, active_only, point_of_sale } = req.query;
 
     let query = `
       SELECT sa.*, s.station_code, s.station_name
@@ -20,11 +20,16 @@ const getSalesAgents = async (req, res) => {
       params.push(station_id);
     }
 
+    if (point_of_sale) {
+      query += ` AND sa.point_of_sale = $${paramIndex++}`;
+      params.push(point_of_sale);
+    }
+
     if (active_only === 'true') {
       query += ' AND sa.is_active = true';
     }
 
-    query += ' ORDER BY s.station_code ASC, sa.agent_name ASC';
+    query += ' ORDER BY s.station_code ASC, sa.point_of_sale ASC, sa.agent_name ASC';
 
     const result = await db.query(query, params);
 
@@ -357,11 +362,51 @@ const importSalesAgents = async (req, res) => {
   }
 };
 
+// GET distinct POS values for a station
+const getPointOfSales = async (req, res) => {
+  try {
+    const { station_id } = req.query;
+
+    if (!station_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'station_id is required'
+      });
+    }
+
+    const result = await db.query(
+      `SELECT DISTINCT point_of_sale, COUNT(*) as agent_count
+       FROM sales_agents
+       WHERE station_id = $1 AND point_of_sale IS NOT NULL AND is_active = true
+       GROUP BY point_of_sale
+       ORDER BY point_of_sale`,
+      [station_id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        point_of_sales: result.rows.map(r => ({
+          name: r.point_of_sale,
+          agent_count: parseInt(r.agent_count)
+        }))
+      }
+    });
+  } catch (error) {
+    logger.error('Get point of sales error:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch point of sales'
+    });
+  }
+};
+
 module.exports = {
   getSalesAgents,
   getSalesAgentById,
   createSalesAgent,
   updateSalesAgent,
   deleteSalesAgent,
-  importSalesAgents
+  importSalesAgents,
+  getPointOfSales
 };

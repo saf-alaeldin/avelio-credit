@@ -1,39 +1,85 @@
 // src/pages/ExportData.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../services/api';
+import ModernDatePicker from '../components/ModernDatePicker';
 import './ExportData.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 export default function ExportData() {
   const [loading, setLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Date range selection
+  const today = new Date().toISOString().split('T')[0];
+  const [periodType, setPeriodType] = useState('range'); // 'single', 'range'
+  const [singleDate, setSingleDate] = useState(today);
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+
+  // Station Settlement Report state
+  const [stations, setStations] = useState([]);
+  const [selectedStation, setSelectedStation] = useState('');
+  const [stationStartDate, setStationStartDate] = useState(today);
+  const [stationEndDate, setStationEndDate] = useState(today);
 
   const token =
     localStorage.getItem('token') ||
     localStorage.getItem('authToken') ||
     sessionStorage.getItem('token');
 
+  // Get the effective date range based on period type
+  const getDateRange = () => {
+    if (periodType === 'single') {
+      return { start_date: singleDate, end_date: singleDate };
+    }
+    return { start_date: startDate, end_date: endDate };
+  };
+
+  // Format date for display
+  const formatDateDisplay = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Get period display text
+  const getPeriodDisplay = () => {
+    if (periodType === 'single') {
+      return formatDateDisplay(singleDate);
+    }
+    if (startDate === endDate) {
+      return formatDateDisplay(startDate);
+    }
+    return `${formatDateDisplay(startDate)} - ${formatDateDisplay(endDate)}`;
+  };
+
+  // Fetch stations on mount
+  useEffect(() => {
+    const fetchStations = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/stations?active_only=true`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (data.success) {
+          setStations(data.data?.stations || data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch stations:', err);
+      }
+    };
+    fetchStations();
+  }, [token]);
+
   const handleDailySummaryPDF = async () => {
     try {
       setLoading(true);
+      setLoadingType('daily');
       setError('');
       setSuccess('');
 
-      // Use today's date
-      const today = new Date().toISOString().split('T')[0];
-
-      // Fetch PDF from backend
       const url = `${API_BASE}/export/daily-summary?date=${today}`;
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
@@ -44,7 +90,6 @@ export default function ExportData() {
         throw new Error(errorData.message || 'Failed to generate daily summary');
       }
 
-      // Download PDF
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -61,90 +106,126 @@ export default function ExportData() {
       setError(e.message || 'Failed to generate daily summary');
     } finally {
       setLoading(false);
+      setLoadingType('');
     }
   };
 
-  const handleMonthlySummaryPDF = async () => {
+  const handleSalesSettlementsPDF = async () => {
     try {
       setLoading(true);
+      setLoadingType('pdf');
       setError('');
       setSuccess('');
 
-      // Use current month
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-
-      // Fetch PDF from backend
-      const url = `${API_BASE}/export/monthly-summary?year=${year}&month=${month}`;
+      const { start_date, end_date } = getDateRange();
+      const url = `${API_BASE}/export/sales-settlements?start_date=${start_date}&end_date=${end_date}`;
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to generate monthly summary');
+        throw new Error(errorData.message || 'Failed to generate PDF report');
       }
 
-      // Download PDF
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `monthly-summary-${year}-${String(month).padStart(2, '0')}.pdf`;
+      link.download = `sales-settlements-executive-summary-${start_date}-to-${end_date}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
 
-      setSuccess('Successfully downloaded monthly summary PDF');
+      setSuccess('Successfully downloaded Executive Summary PDF');
 
     } catch (e) {
-      setError(e.message || 'Failed to generate monthly summary');
+      setError(e.message || 'Failed to generate PDF report');
     } finally {
       setLoading(false);
+      setLoadingType('');
     }
   };
 
-  const handleSalesSettlementsReport = async () => {
+  const handleSalesSettlementsExcel = async () => {
     try {
       setLoading(true);
+      setLoadingType('excel');
       setError('');
       setSuccess('');
 
-      // Use current month
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-
-      // Fetch PDF from backend
-      const url = `${API_BASE}/export/sales-settlements?year=${year}&month=${month}`;
+      const { start_date, end_date } = getDateRange();
+      const url = `${API_BASE}/export/sales-settlements-excel?start_date=${start_date}&end_date=${end_date}`;
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to generate sales & settlements report');
+        throw new Error(errorData.message || 'Failed to generate Excel report');
       }
 
-      // Download PDF
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `sales-settlements-report-${year}-${String(month).padStart(2, '0')}.pdf`;
+      link.download = `sales-settlements-detailed-report-${start_date}-to-${end_date}.xlsx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
 
-      setSuccess('Successfully downloaded Sales & Settlements Report');
+      setSuccess('Successfully downloaded Detailed Excel Report');
 
     } catch (e) {
-      setError(e.message || 'Failed to generate sales & settlements report');
+      setError(e.message || 'Failed to generate Excel report');
     } finally {
       setLoading(false);
+      setLoadingType('');
+    }
+  };
+
+  const handleStationSettlementPDF = async () => {
+    if (!selectedStation) {
+      setError('Please select a station');
+      return;
+    }
+    try {
+      setLoading(true);
+      setLoadingType('station');
+      setError('');
+      setSuccess('');
+
+      const station = stations.find(s => s.id === selectedStation);
+      const stationName = station?.station_name || station?.station_code || 'station';
+      const url = `${API_BASE}/export/station-settlement?station_id=${selectedStation}&start_date=${stationStartDate}&end_date=${stationEndDate}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate Station Settlement report');
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `station-settlement-${stationName}-${stationStartDate}-to-${stationEndDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setSuccess(`Successfully downloaded ${stationName} Settlement Report`);
+
+    } catch (e) {
+      setError(e.message || 'Failed to generate Station Settlement report');
+    } finally {
+      setLoading(false);
+      setLoadingType('');
     }
   };
 
@@ -153,121 +234,284 @@ export default function ExportData() {
       <div className="export-header">
         <div>
           <h2 className="export-title">Export Reports</h2>
-          <p className="export-subtitle">Professional reports for sales and settlements</p>
+          <p className="export-subtitle">Professional reports for executive review</p>
         </div>
       </div>
 
       {error && (
         <div className="export-message export-message--error">
-          ❌ {error}
+          {error}
         </div>
       )}
 
       {success && (
         <div className="export-message export-message--success">
-          ✅ {success}
+          {success}
         </div>
       )}
 
-      {/* Sales & Settlements Report Section */}
-      <div className="export-card" style={{ marginTop: '24px' }}>
+      {/* Sales & Settlements Report Section - MAIN */}
+      <div className="export-card export-card--featured">
+        <div className="export-card-badge">Executive Reports</div>
         <div className="export-section">
-          <h3 className="export-section-title">📊 Sales & Settlements Report</h3>
+          <h3 className="export-section-title">Sales & Settlements Report</h3>
           <p className="export-section-desc">
-            Comprehensive analysis report with sales performance, settlement status, agent insights, and revenue breakdowns
+            Comprehensive analysis with KPIs, station performance, agent rankings, and settlement insights
           </p>
 
-          <div className="export-actions" style={{ marginTop: '20px' }}>
+          {/* Period Type Selector */}
+          <div className="period-type-selector">
             <button
-              className="export-btn export-btn--pdf"
-              onClick={handleSalesSettlementsReport}
-              disabled={loading}
-              style={{
-                backgroundColor: '#0EA5E9',
-                color: 'white',
-                padding: '12px 24px',
-                fontSize: '15px',
-                fontWeight: '600'
-              }}
+              className={`period-type-btn ${periodType === 'single' ? 'active' : ''}`}
+              onClick={() => setPeriodType('single')}
             >
-              {loading ? '⏳ Generating...' : '📈 Sales & Settlements Report (PDF)'}
+              Single Day
+            </button>
+            <button
+              className={`period-type-btn ${periodType === 'range' ? 'active' : ''}`}
+              onClick={() => setPeriodType('range')}
+            >
+              Date Range
             </button>
           </div>
 
-          <div style={{ marginTop: '15px', fontSize: '13px', color: '#6B7280' }}>
-            <p style={{ marginBottom: '8px' }}><strong>Report includes:</strong></p>
-            <ul style={{ marginLeft: '20px', lineHeight: '1.8' }}>
-              <li>Executive summary with key metrics</li>
-              <li>Revenue breakdown by currency and station</li>
-              <li>Settlement status analytics</li>
-              <li>Top performing agents ranking</li>
-              <li>Point of Sale analysis for Juba station</li>
-              <li>Performance insights and trends</li>
-            </ul>
+          {/* Date Picker */}
+          <div className="date-picker-section">
+            {periodType === 'single' ? (
+              <div className="date-picker-group">
+                <label className="date-label">Select Date:</label>
+                <ModernDatePicker
+                  selected={singleDate}
+                  onChange={setSingleDate}
+                  placeholder="Select date"
+                  maxDate={new Date()}
+                />
+              </div>
+            ) : (
+              <div className="date-picker-row">
+                <div className="date-picker-group">
+                  <label className="date-label">From:</label>
+                  <ModernDatePicker
+                    selected={startDate}
+                    onChange={(date) => {
+                      setStartDate(date);
+                      if (date > endDate) {
+                        setEndDate(date);
+                      }
+                    }}
+                    placeholder="Start date"
+                    maxDate={new Date()}
+                  />
+                </div>
+                <div className="date-picker-group">
+                  <label className="date-label">To:</label>
+                  <ModernDatePicker
+                    selected={endDate}
+                    onChange={setEndDate}
+                    placeholder="End date"
+                    minDate={startDate ? new Date(startDate) : null}
+                    maxDate={new Date()}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="period-display">
+              Report Period: <strong>{getPeriodDisplay()}</strong>
+            </div>
+          </div>
+
+          {/* Export Buttons */}
+          <div className="export-buttons-grid">
+            {/* PDF Button */}
+            <div className="export-button-card">
+              <div className="export-button-icon pdf-icon">PDF</div>
+              <div className="export-button-content">
+                <h4>Executive Summary</h4>
+                <p>Single-page overview for CEO/CFO</p>
+                <ul className="export-features">
+                  <li>Key performance indicators</li>
+                  <li>Top stations & agents</li>
+                  <li>Settlement status overview</li>
+                  <li>Key insights</li>
+                </ul>
+              </div>
+              <button
+                className="export-btn export-btn--pdf"
+                onClick={handleSalesSettlementsPDF}
+                disabled={loading}
+              >
+                {loading && loadingType === 'pdf' ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>Download PDF</>
+                )}
+              </button>
+            </div>
+
+            {/* Excel Button */}
+            <div className="export-button-card">
+              <div className="export-button-icon excel-icon">XLS</div>
+              <div className="export-button-content">
+                <h4>Detailed Report</h4>
+                <p>Complete data for analysis</p>
+                <ul className="export-features">
+                  <li>All sales transactions</li>
+                  <li>Settlement details</li>
+                  <li>Daily breakdown</li>
+                  <li>Multiple analysis sheets</li>
+                </ul>
+              </div>
+              <button
+                className="export-btn export-btn--excel"
+                onClick={handleSalesSettlementsExcel}
+                disabled={loading}
+              >
+                {loading && loadingType === 'excel' ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>Download Excel</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* PDF Summary Export Section */}
-      <div className="export-card" style={{ marginTop: '24px' }}>
+      {/* Station Settlement Report Section */}
+      <div className="export-card">
+        <div className="export-card-badge">Station Report</div>
         <div className="export-section">
-          <h3 className="export-section-title">Export Summary Reports (PDF)</h3>
+          <h3 className="export-section-title">Station Settlement Report</h3>
           <p className="export-section-desc">
-            Download professional summary reports for today or current month
+            Detailed settlement report for a specific station with agent breakdown (for Juba)
           </p>
 
-          <div className="export-actions" style={{ marginTop: '20px' }}>
+          {/* Station Selection */}
+          <div className="station-select-section">
+            <div className="station-select-group">
+              <label className="date-label">Select Station:</label>
+              <select
+                className="station-select"
+                value={selectedStation}
+                onChange={(e) => setSelectedStation(e.target.value)}
+              >
+                <option value="">-- Select Station --</option>
+                {stations.map(station => (
+                  <option key={station.id} value={station.id}>
+                    {station.station_name} ({station.station_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Date Range for Station Report */}
+          <div className="date-picker-section">
+            <div className="date-picker-row">
+              <div className="date-picker-group">
+                <label className="date-label">From:</label>
+                <ModernDatePicker
+                  selected={stationStartDate}
+                  onChange={(date) => {
+                    setStationStartDate(date);
+                    if (date > stationEndDate) {
+                      setStationEndDate(date);
+                    }
+                  }}
+                  placeholder="Start date"
+                  maxDate={new Date()}
+                />
+              </div>
+              <div className="date-picker-group">
+                <label className="date-label">To:</label>
+                <ModernDatePicker
+                  selected={stationEndDate}
+                  onChange={setStationEndDate}
+                  placeholder="End date"
+                  minDate={stationStartDate ? new Date(stationStartDate) : null}
+                  maxDate={new Date()}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Export Button */}
+          <div className="export-buttons-grid">
+            <div className="export-button-card">
+              <div className="export-button-icon pdf-icon">PDF</div>
+              <div className="export-button-content">
+                <h4>Station Settlement</h4>
+                <p>Detailed settlement report for selected station</p>
+                <ul className="export-features">
+                  <li>Settlement summary by currency</li>
+                  <li>Sales breakdown</li>
+                  <li>Expenses detail</li>
+                  <li>Agent cash entries (Juba)</li>
+                </ul>
+              </div>
+              <button
+                className="export-btn export-btn--pdf"
+                onClick={handleStationSettlementPDF}
+                disabled={loading || !selectedStation}
+              >
+                {loading && loadingType === 'station' ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>Download PDF</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Additional Reports Section */}
+      <div className="export-card">
+        <div className="export-section">
+          <h3 className="export-section-title">Quick Reports</h3>
+          <p className="export-section-desc">
+            Pre-configured summary reports
+          </p>
+
+          <div className="export-actions-row">
             <button
-              className="export-btn export-btn--pdf"
+              className="export-btn export-btn--secondary"
               onClick={handleDailySummaryPDF}
               disabled={loading}
             >
-              {loading ? '⏳ Generating...' : '📊 Daily Summary (PDF)'}
-            </button>
-            <button
-              className="export-btn export-btn--pdf"
-              onClick={handleMonthlySummaryPDF}
-              disabled={loading}
-            >
-              {loading ? '⏳ Generating...' : '📈 Monthly Summary (PDF)'}
+              {loading && loadingType === 'daily' ? 'Generating...' : "Today's Receipts Summary (PDF)"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Info Section */}
-      <div className="export-info">
-        <div className="export-info-card">
-          <div className="export-info-icon">📊</div>
-          <div className="export-info-content">
-            <h4 className="export-info-title">Professional Reports</h4>
-            <p className="export-info-text">
-              Comprehensive PDF reports with detailed analytics, summaries, and insights for sales performance and settlements tracking.
-            </p>
+      {/* Report Info Section */}
+      <div className="export-info-section">
+        <h4 className="export-info-title">Report Contents</h4>
+        <div className="export-info-grid">
+          <div className="export-info-item">
+            <div className="export-info-icon-small">PDF</div>
+            <div>
+              <strong>Executive Summary (PDF)</strong>
+              <p>Single-page report with KPIs, charts, and key insights. Perfect for sharing with CEO/CFO in meetings or email.</p>
+            </div>
           </div>
-        </div>
-
-        <div className="export-info-card">
-          <div className="export-info-icon">📈</div>
-          <div className="export-info-content">
-            <h4 className="export-info-title">Daily & Monthly Insights</h4>
-            <p className="export-info-text">
-              Track performance trends with daily snapshots and monthly overviews including revenue breakdowns, station comparisons, and payment method analytics.
-            </p>
-          </div>
-        </div>
-
-        <div className="export-info-card">
-          <div className="export-info-content">
-            <h4 className="export-info-title">Report Features:</h4>
-            <ul className="export-info-list">
-              <li>Revenue and sales summaries</li>
-              <li>Station performance breakdown</li>
-              <li>Payment method analytics</li>
-              <li>Settlement status tracking</li>
-              <li>Agency insights and trends</li>
-              <li>Professional PDF formatting</li>
-            </ul>
+          <div className="export-info-item">
+            <div className="export-info-icon-small excel">XLS</div>
+            <div>
+              <strong>Detailed Report (Excel)</strong>
+              <p>Multi-sheet workbook with all transactions, settlements, agent performance, station analysis, and daily breakdowns.</p>
+            </div>
           </div>
         </div>
       </div>

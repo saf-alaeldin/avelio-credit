@@ -24,4 +24,10 @@ router.get('/cash-closing', exportController.getCashClosingData);
 // GET /api/v1/export/sales-settlements - Export comprehensive sales and settlements report as PDF
 router.get('/sales-settlements', exportController.exportSalesSettlementsReport);
 
+// GET /api/v1/export/sales-settlements-excel - Export comprehensive sales and settlements report as Excel
+router.get('/sales-settlements-excel', exportController.exportSalesSettlementsExcel);
+
+// GET /api/v1/export/station-settlement - Export station-specific settlement report as PDF
+router.get('/station-settlement', exportController.exportStationSettlementReport);
+
 module.exports = router;

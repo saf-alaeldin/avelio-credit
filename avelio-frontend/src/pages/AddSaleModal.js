@@ -1,16 +1,7 @@
 import React, { useState } from 'react';
+import { getApiBaseUrl } from '../services/api';
 
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 // Point of Sales for Juba station
 const JUBA_POS_OPTIONS = [
@@ -28,11 +19,19 @@ export default function AddSaleModal({ stationId, station, agents, onClose, onSu
     date_to: new Date().toISOString().split('T')[0],
     date_from: new Date().toISOString().split('T')[0],
     flight_reference: '',
-    amount: '',
+    sales_amount: '',
+    cashout_amount: '0',
     currency: 'USD'
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Calculate balance (sales - cashout)
+  const calculateBalance = () => {
+    const sales = parseFloat(formData.sales_amount) || 0;
+    const cashout = parseFloat(formData.cashout_amount) || 0;
+    return sales - cashout;
+  };
 
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
@@ -48,8 +47,20 @@ export default function AddSaleModal({ stationId, station, agents, onClose, onSu
     e.preventDefault();
 
     // Validate required fields
-    if (!formData.amount || !formData.date_to || !formData.date_from) {
+    if (!formData.sales_amount || !formData.date_to || !formData.date_from) {
       setError('Please fill in all required fields');
+      return;
+    }
+
+    // Validate sales_amount is non-negative
+    if (parseFloat(formData.sales_amount) < 0) {
+      setError('Reservation System Amount must be non-negative');
+      return;
+    }
+
+    // Validate cashout_amount is non-negative
+    if (parseFloat(formData.cashout_amount) < 0) {
+      setError('Cashout Amount must be non-negative');
       return;
     }
 
@@ -76,7 +87,14 @@ export default function AddSaleModal({ stationId, station, agents, onClose, onSu
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          ...formData,
+          agent_id: formData.agent_id,
+          point_of_sale: formData.point_of_sale,
+          date_to: formData.date_to,
+          date_from: formData.date_from,
+          flight_reference: formData.flight_reference,
+          sales_amount: parseFloat(formData.sales_amount),
+          cashout_amount: parseFloat(formData.cashout_amount) || 0,
+          currency: formData.currency,
           transaction_date: formData.date_from,
           station_id: stationId
         })
@@ -125,22 +143,24 @@ export default function AddSaleModal({ stationId, station, agents, onClose, onSu
                 </div>
               )}
 
-              <div className="form-group">
-                <label>Agent {isJubaStation ? '*' : '(Optional)'}</label>
-                <select
-                  value={formData.agent_id}
-                  onChange={(e) => setFormData({ ...formData, agent_id: e.target.value })}
-                  required={isJubaStation}
-                  disabled={isJubaStation && !formData.point_of_sale}
-                >
-                  <option value="">
-                    {isJubaStation && !formData.point_of_sale ? 'First select Point of Sale' : 'Select Agent'}
-                  </option>
-                  {filteredAgents.map(a => (
-                    <option key={a.id} value={a.id}>{a.agent_code} - {a.agent_name}</option>
-                  ))}
-                </select>
-              </div>
+              {isJubaStation && (
+                <div className="form-group">
+                  <label>Agent *</label>
+                  <select
+                    value={formData.agent_id}
+                    onChange={(e) => setFormData({ ...formData, agent_id: e.target.value })}
+                    required
+                    disabled={!formData.point_of_sale}
+                  >
+                    <option value="">
+                      {!formData.point_of_sale ? 'First select Point of Sale' : 'Select Agent'}
+                    </option>
+                    {filteredAgents.map(a => (
+                      <option key={a.id} value={a.id}>{a.agent_code} - {a.agent_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>To *</label>
@@ -161,13 +181,36 @@ export default function AddSaleModal({ stationId, station, agents, onClose, onSu
                 />
               </div>
               <div className="form-group">
-                <label>Amount *</label>
+                <label>Reservation System Amount *</label>
                 <input
                   type="number"
                   step="0.01"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  min="0"
+                  value={formData.sales_amount}
+                  onChange={(e) => setFormData({ ...formData, sales_amount: e.target.value })}
+                  placeholder="Sales from reservation system"
                   required
+                />
+              </div>
+              <div className="form-group">
+                <label>Cashout Amount (Refunds/Voids)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.cashout_amount}
+                  onChange={(e) => setFormData({ ...formData, cashout_amount: e.target.value })}
+                  placeholder="Refunds and voids"
+                />
+              </div>
+              <div className="form-group">
+                <label>Balance (Calculated)</label>
+                <input
+                  type="text"
+                  value={calculateBalance().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  readOnly
+                  className="calculated-field"
+                  style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold', color: calculateBalance() < 0 ? '#dc3545' : '#28a745' }}
                 />
               </div>
               <div className="form-group">

@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[phases.install]
+cmds = [
+  "cd avelio-backend && npm install --production=false",
+  "cd avelio-frontend && npm install --production=false"
+]
+
+[phases.build]
+cmds = ["cd avelio-frontend && npm run build"]
+
+[start]
+cmd = "node avelio-backend/src/server.js"

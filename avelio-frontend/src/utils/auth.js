@@ -27,23 +27,24 @@ export const handleLogout = () => {
  */
 export const handleLogin = (token, user) => {
   console.log('🔐 Logging in...');
-  
+
   // Save token
   localStorage.setItem('token', token);
-  
+
   // Save user data if provided
   if (user) {
     localStorage.setItem('user', JSON.stringify(user));
   }
-  
+
   console.log('✅ Login successful');
   console.log('🔑 Token saved');
-  
+
   // Dispatch login event to notify App.js
   window.dispatchEvent(new Event('login-success'));
-  
-  // Redirect to dashboard with full page reload
-  window.location.href = '/dashboard';
+
+  // Redirect based on role - auditors go to settlements, others to dashboard
+  const redirectPath = user?.role === 'auditor' ? '/settlements' : '/dashboard';
+  window.location.href = redirectPath;
 };
 
 /**

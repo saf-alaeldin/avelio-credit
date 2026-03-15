@@ -66,11 +66,11 @@ exports.getAnalytics = async (req, res) => {
     // 4) Top agencies (revenue + count). If you have an agencies table, join to get name.
     const topAgenciesSQL = `
       SELECT
-        COALESCE(a.agency_name, r.agency_name, r.agency_id::text, 'Unknown') AS name,
+        COALESCE(a.agency_name, r.agency_id::text, 'Unknown') AS name,
         COUNT(*)                                                              AS count,
         SUM(COALESCE(r.amount,0))::numeric                                    AS revenue
       FROM receipts r
-      LEFT JOIN agencies a ON a.agency_id = r.agency_id
+      LEFT JOIN agencies a ON a.id = r.agency_id
       ${where}
       GROUP BY 1
       ORDER BY revenue DESC
@@ -78,13 +78,46 @@ exports.getAnalytics = async (req, res) => {
     `;
     const topAgenciesRows = (await client.query(topAgenciesSQL, params)).rows;
 
+    // 5) Payment method breakdown (count + revenue)
+    const voidFilter = where ? `${where} AND UPPER(COALESCE(status,'')) != 'VOID'` : `WHERE UPPER(COALESCE(status,'')) != 'VOID'`;
+    const byPaymentMethodSQL = `
+      SELECT
+        COALESCE(payment_method, 'Not Specified') AS method,
+        COUNT(*)                                   AS count,
+        SUM(COALESCE(amount,0))::numeric           AS revenue
+      FROM receipts
+      ${voidFilter}
+      GROUP BY 1
+      ORDER BY revenue DESC
+    `;
+    const byPaymentMethodRows = (await client.query(byPaymentMethodSQL, params)).rows;
+
+    // 6) Pending aging analysis (bucket counts)
+    const pendingFilter = where ? `${where} AND UPPER(COALESCE(status,'')) = 'PENDING'` : `WHERE UPPER(COALESCE(status,'')) = 'PENDING'`;
+    const pendingAgingSQL = `
+      SELECT
+        CASE
+          WHEN (CURRENT_DATE - issue_date::date) <= 7  THEN '0-7'
+          WHEN (CURRENT_DATE - issue_date::date) <= 14 THEN '8-14'
+          WHEN (CURRENT_DATE - issue_date::date) <= 30 THEN '15-30'
+          WHEN (CURRENT_DATE - issue_date::date) <= 60 THEN '31-60'
+          ELSE '60+'
+        END AS bucket,
+        COUNT(*) AS count
+      FROM receipts
+      ${pendingFilter}
+      GROUP BY 1
+    `;
+    const pendingAgingRows = (await client.query(pendingAgingSQL, params)).rows;
+
     // Build objects shaped exactly like your frontend expects
     const byMonth = {};
     let thisMonthRevenue = 0, lastMonthRevenue = 0, thisMonthReceipts = 0, lastMonthReceipts = 0;
 
-    const now = new Date();
-    const thisYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    const dLM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const jubaToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Juba' });
+    const thisYM = jubaToday.substring(0, 7); // "YYYY-MM"
+    const [thisYear, thisMonth] = thisYM.split('-').map(Number);
+    const dLM = new Date(thisYear, thisMonth - 2, 1); // month is 0-indexed
     const lastYM = `${dLM.getFullYear()}-${String(dLM.getMonth()+1).padStart(2,'0')}`;
 
     byMonthRows.forEach(r => {
@@ -120,6 +153,20 @@ exports.getAnalytics = async (req, res) => {
       revenue: Number(r.revenue),
     }));
 
+    // Build payment method map
+    const byPaymentMethod = {};
+    byPaymentMethodRows.forEach(r => {
+      byPaymentMethod[r.method] = { count: Number(r.count), revenue: Number(r.revenue) };
+    });
+
+    // Build pending aging map
+    const pendingAging = { '0-7': 0, '8-14': 0, '15-30': 0, '31-60': 0, '60+': 0 };
+    pendingAgingRows.forEach(r => {
+      if (pendingAging.hasOwnProperty(r.bucket)) {
+        pendingAging[r.bucket] = Number(r.count);
+      }
+    });
+
     const payload = {
       totalRevenue: Number(totals.total_revenue || 0),
       paidRevenue: Number(totals.paid_revenue || 0),
@@ -139,6 +186,8 @@ exports.getAnalytics = async (req, res) => {
       byMonth,
       byMonthStatus,
       topAgenciesList,
+      byPaymentMethod,
+      pendingAging,
     };
 
     res.json({ status: 'success', data: payload });

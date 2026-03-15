@@ -37,8 +37,8 @@ export default function AppHeader() {
   return (
     !isLoginPage && (
       <header className="appheader">
-        {/* Brand (clickable to Dashboard) */}
-        <Link to="/dashboard" className="brand-link" aria-label="Go to Dashboard">
+        {/* Brand (clickable to home - Dashboard for most users, Settlements for auditors) */}
+        <Link to={user.role === 'auditor' ? '/settlements' : '/dashboard'} className="brand-link" aria-label="Go to Home">
           <div className="brand-logo">
             <img
               src="/images/kushair-logo.png"
@@ -50,14 +50,24 @@ export default function AppHeader() {
 
         {/* Global top navigation */}
         <nav className="app-nav">
-          <NavLink to="/dashboard"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
-          <NavLink to="/receipts"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Receipts</NavLink>
-          <NavLink to="/agencies"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Agencies</NavLink>
-          <NavLink to="/station-settlement" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Settlement</NavLink>
-          <NavLink to="/export"     className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Export</NavLink>
-          <NavLink to="/analytics"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
+          {user.role !== 'auditor' && (
+            <NavLink to="/dashboard"  className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
+          )}
+          {user.role !== 'auditor' && (
+            <>
+              <NavLink to="/receipts"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Receipts</NavLink>
+              <NavLink to="/agencies"   className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Agencies</NavLink>
+              <NavLink to="/station-settlement" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Settlement</NavLink>
+            </>
+          )}
+          {(user.role === 'admin' || user.role === 'manager' || user.role === 'auditor') && (
+            <NavLink to="/settlements" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Settlements</NavLink>
+          )}
+          {(user.role === 'admin' || user.role === 'manager' || user.role === 'auditor') && (
+            <NavLink to="/station-summary" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Station Summary</NavLink>
+          )}
           {user.role === 'admin' && (
-            <NavLink to="/users" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Users</NavLink>
+            <NavLink to="/operations-report" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Reports</NavLink>
           )}
         </nav>
 
@@ -82,6 +92,15 @@ export default function AppHeader() {
                 {user.email && <div className="dropdown-email">{user.email}</div>}
               </div>
               <Link className="dropdown-item" to="/account" onClick={() => setOpen(false)}>My Account</Link>
+              <div className="dropdown-divider"></div>
+              <div className="dropdown-section">Tools</div>
+              {/* Export and Analytics hidden temporarily
+              <Link className="dropdown-item" to="/export" onClick={() => setOpen(false)}>Export</Link>
+              <Link className="dropdown-item" to="/analytics" onClick={() => setOpen(false)}>Analytics</Link>
+              */}
+              {user.role === 'admin' && (
+                <Link className="dropdown-item" to="/users" onClick={() => setOpen(false)}>Users</Link>
+              )}
               {(user.role === 'admin' || user.role === 'manager') && (
                 <>
                   <div className="dropdown-divider"></div>

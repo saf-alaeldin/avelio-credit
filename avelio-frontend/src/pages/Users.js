@@ -1,18 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { getApiBaseUrl } from '../services/api';
 import './Users.css';
 
-// Auto-detect API URL based on window location
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  const hostname = window.location.hostname;
-  const port = 5001;
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:${port}/api/v1`;
-  }
-  return 'http://localhost:5001/api/v1';
-};
-const API_BASE = getApiUrl();
+const API_BASE = getApiBaseUrl();
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -224,6 +215,8 @@ export default function Users() {
         return 'badge-admin';
       case 'manager':
         return 'badge-manager';
+      case 'auditor':
+        return 'badge-auditor';
       default:
         return 'badge-staff';
     }
@@ -422,6 +415,7 @@ export default function Users() {
                   >
                     <option value="staff">Staff</option>
                     <option value="manager">Manager</option>
+                    <option value="auditor">Auditor</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -536,6 +530,7 @@ export default function Users() {
                   >
                     <option value="staff">Staff</option>
                     <option value="manager">Manager</option>
+                    <option value="auditor">Auditor</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
