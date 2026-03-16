@@ -8,7 +8,7 @@ const reportController = require('../controllers/reportController');
 router.get('/operations', requireAuth, reportController.getOperationsReport);
 
 // GET agencies report - receipt deposits summary
-router.get('/agencies-summary', requireAuth, reportController.getAgenciesReport);
+router.get('/agencies', requireAuth, reportController.getAgenciesReport);
 
 // GET stations list for filter dropdown
 router.get('/stations', requireAuth, reportController.getStationsForFilter);
