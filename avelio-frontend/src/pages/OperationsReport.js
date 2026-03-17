@@ -127,7 +127,7 @@ export default function OperationsReport() {
         date_to: dateTo,
       });
 
-      const res = await fetch(`${API_BASE}/reports/agencies-summary?${params}`, {
+      const res = await fetch(`${API_BASE}/reports/agencies?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
